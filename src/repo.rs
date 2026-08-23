@@ -131,7 +131,14 @@ fn validate_windows_name(name: &str) -> Result<(), &'static str> {
 /// Compares normalized repository roots using the selected platform semantics.
 pub fn paths_equivalent(left: &Path, right: &Path, platform: Platform) -> bool {
     match platform {
-        Platform::Windows => windows_path_key(left) == windows_path_key(right),
+        Platform::Windows => {
+            let canonical_left = std::fs::canonicalize(left);
+            let canonical_right = std::fs::canonicalize(right);
+            match (canonical_left, canonical_right) {
+                (Ok(left), Ok(right)) => windows_path_key(&left) == windows_path_key(&right),
+                _ => windows_path_key(left) == windows_path_key(right),
+            }
+        }
         Platform::Linux | Platform::MacOs => left == right,
     }
 }
@@ -245,10 +252,12 @@ mod tests {
     #[test]
     fn discovers_root_from_the_current_repository_directory() {
         let repository = repository("current");
-        assert_eq!(
-            discover_root(repository.path()).expect("repository must be discovered"),
-            repository.path()
-        );
+        let root = discover_root(repository.path()).expect("repository must be discovered");
+        assert!(paths_equivalent(
+            &root,
+            repository.path(),
+            Platform::current()
+        ));
     }
 
     #[test]
@@ -257,10 +266,12 @@ mod tests {
         let nested = repository.path().join("one").join("two");
         fs::create_dir_all(&nested).expect("nested directory must be created");
 
-        assert_eq!(
-            discover_root(&nested).expect("repository must be discovered"),
-            repository.path()
-        );
+        let root = discover_root(&nested).expect("repository must be discovered");
+        assert!(paths_equivalent(
+            &root,
+            repository.path(),
+            Platform::current()
+        ));
     }
 
     #[test]
@@ -283,10 +294,8 @@ mod tests {
             &["worktree", "add", "--detach", &worktree_text],
         );
 
-        assert_eq!(
-            discover_root(&worktree).expect("worktree must be discovered"),
-            worktree
-        );
+        let root = discover_root(&worktree).expect("worktree must be discovered");
+        assert!(paths_equivalent(&root, &worktree, Platform::current()));
     }
 
     #[test]
