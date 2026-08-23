@@ -16,7 +16,6 @@ impl AppError {
         }
     }
 }
-
 impl Display for AppError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.message)
@@ -35,4 +34,3 @@ pub fn report(result: Result<(), AppError>) -> i32 {
         }
     }
 }
-

@@ -10,4 +10,3 @@ pub fn run(command: Command) -> Result<(), AppError> {
         Command::Unpin => Err(AppError::not_implemented("git unpin")),
     }
 }
-

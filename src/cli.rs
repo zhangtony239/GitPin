@@ -6,4 +6,3 @@ pub enum Command {
     Pin,
     Unpin,
 }
-
