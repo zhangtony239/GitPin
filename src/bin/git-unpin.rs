@@ -1,6 +1,8 @@
-use git_pin::cli::Command;
+use git_pin::cli::Operation;
 
 fn main() {
-    let code = git_pin::error::report(git_pin::app::run(Command::Unpin));
+    let result = git_pin::cli::parse(Operation::Unpin, std::env::args_os().skip(1))
+        .and_then(git_pin::app::run);
+    let code = git_pin::error::report(result);
     std::process::exit(code);
 }

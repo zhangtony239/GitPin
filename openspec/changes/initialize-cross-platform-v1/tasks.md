@@ -2,13 +2,13 @@
 
 - [x] 1.1 创建单 Rust package、提交 lockfile，并建立 library modules、`git-pin`/`git-unpin` 两个薄 binary 以及仅在 macOS 构建的内部 launcher target；此提交只要求三个原生 OS runner 均可编译
 - [x] 1.2 添加 MIT `LICENSE`、最小 `README.md`、repository ignore/settings，并说明本地无需 Rust、所有编译验证以 GitHub Actions 为准
-- [ ] 1.3 添加 PR/main CI workflow，在 Windows、Linux、macOS 原生 runner 执行 fmt check、拒绝 warning 的 clippy、test 与 release build，并启用 Cargo 缓存；推送并确认首轮矩阵绿色
+- [x] 1.3 添加 PR/main CI workflow，在 Windows、Linux、macOS 原生 runner 执行 fmt check、拒绝 warning 的 clippy、test 与 release build，并启用 Cargo 缓存；推送并确认首轮矩阵绿色
 
 ## 2. 核心命令与 Repository 发现
 
-- [ ] 2.1 实现零个或一个位置参数的命令解析、稳定 operation 类型、用法错误和退出码，并以单元测试覆盖两个 binary 的有效/无效参数矩阵
-- [ ] 2.2 以结构化 `git -C <input> rev-parse --show-toplevel` 实现 repository root 发现、绝对路径校验和上下文错误，覆盖当前目录、给定子目录、worktree、非仓库及 Git 不可用测试
-- [ ] 2.3 实现 basename 命名、三平台安全名称校验及平台路径等价策略，覆盖空格、非 ASCII、非法文件名与 Windows 大小写场景
+- [x] 2.1 实现零个或一个位置参数的命令解析、稳定 operation 类型、用法错误和退出码，并以单元测试覆盖两个 binary 的有效/无效参数矩阵
+- [x] 2.2 以结构化 `git -C <input> rev-parse --show-toplevel` 实现 repository root 发现、绝对路径校验和上下文错误，覆盖当前目录、给定子目录、worktree、非仓库及 Git 不可用测试
+- [x] 2.3 实现 basename 命名、三平台安全名称校验及平台路径等价策略，覆盖空格、非 ASCII、非法文件名与 Windows 大小写场景
 - [ ] 2.4 推送 core parsing/repository 小步并以三平台 CI 修复所有路径差异，保持 release build 绿色后再进入 launcher orchestration
 
 ## 3. Launcher 抽象与应用语义
