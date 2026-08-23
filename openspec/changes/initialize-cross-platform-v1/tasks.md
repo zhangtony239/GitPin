@@ -9,13 +9,13 @@
 - [x] 2.1 实现零个或一个位置参数的命令解析、稳定 operation 类型、用法错误和退出码，并以单元测试覆盖两个 binary 的有效/无效参数矩阵
 - [x] 2.2 以结构化 `git -C <input> rev-parse --show-toplevel` 实现 repository root 发现、绝对路径校验和上下文错误，覆盖当前目录、给定子目录、worktree、非仓库及 Git 不可用测试
 - [x] 2.3 实现 basename 命名、三平台安全名称校验及平台路径等价策略，覆盖空格、非 ASCII、非法文件名与 Windows 大小写场景
-- [ ] 2.4 推送 core parsing/repository 小步并以三平台 CI 修复所有路径差异，保持 release build 绿色后再进入 launcher orchestration
+- [x] 2.4 推送 core parsing/repository 小步并以三平台 CI 修复所有路径差异，保持 release build 绿色后再进入 launcher orchestration
 
 ## 3. Launcher 抽象与应用语义
 
-- [ ] 3.1 定义 `Repository`、受管 launcher inspection 结果和窄 `LauncherBackend` trait，并允许测试注入 launcher root 而 production constructor 固定系统目录
-- [ ] 3.2 实现共享 pin orchestration：VS Code 依赖确认、首次创建、同 root 幂等、不同 root 冲突、原子提交失败清理和可诊断错误
-- [ ] 3.3 实现共享 unpin 分派与语义：无参数当前仓库、现存路径优先、否则精确名称、目标缺失幂等、按路径目标不匹配时拒绝删除
+- [x] 3.1 定义 `Repository`、受管 launcher inspection 结果和窄 `LauncherBackend` trait，并允许测试注入 launcher root 而 production constructor 固定系统目录
+- [x] 3.2 实现共享 pin orchestration：VS Code 依赖确认、首次创建、同 root 幂等、不同 root 冲突、原子提交失败清理和可诊断错误
+- [x] 3.3 实现共享 unpin 分派与语义：无参数当前仓库、现存路径优先、否则精确名称、目标缺失幂等、按路径目标不匹配时拒绝删除
 - [ ] 3.4 使用 fake backend 和临时目录覆盖创建/读取/删除失败、竞态冲突、不留半成品、不删除非受管产物及 stdout/stderr/exit-code 契约；推送并确认 CI 绿色
 
 ## 4. Linux XDG Backend

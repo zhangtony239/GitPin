@@ -6,6 +6,38 @@ use std::process::Command;
 
 use crate::error::AppError;
 
+/// A Git working tree normalized for launcher operations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Repository {
+    root: PathBuf,
+    name: String,
+}
+
+impl Repository {
+    /// Discovers a repository and validates its launcher name.
+    pub fn discover(input: &Path, platform: Platform) -> Result<Self, AppError> {
+        let root = discover_root(input)?;
+        let name = repository_name(&root, platform)?;
+        Ok(Self { root, name })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture(root: impl Into<PathBuf>, name: impl Into<String>) -> Self {
+        Self {
+            root: root.into(),
+            name: name.into(),
+        }
+    }
+}
+
 /// Platform rules that affect launcher names and path identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Platform {
@@ -57,6 +89,16 @@ pub fn repository_name(root: &Path, platform: Platform) -> Result<String, AppErr
     validate_name(name, platform).map_err(|reason| {
         AppError::failure(format!(
             "repository name '{name}' cannot be represented safely on {platform:?}: {reason}"
+        ))
+    })?;
+    Ok(name.to_owned())
+}
+
+/// Validates an exact launcher lookup name without changing it.
+pub fn launcher_name(name: &str, platform: Platform) -> Result<String, AppError> {
+    validate_name(name, platform).map_err(|reason| {
+        AppError::failure(format!(
+            "launcher name '{name}' cannot be represented safely on {platform:?}: {reason}"
         ))
     })?;
     Ok(name.to_owned())

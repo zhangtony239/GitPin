@@ -1,1 +1,81 @@
 //! Platform-independent launcher contracts.
+
+use std::path::{Path, PathBuf};
+
+use crate::error::AppError;
+use crate::repo::Repository;
+
+/// Root directory selected for launcher storage.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LauncherRoot(PathBuf);
+
+impl LauncherRoot {
+    /// Used by native production constructors after resolving the system path.
+    pub fn system(path: PathBuf) -> Self {
+        Self(path)
+    }
+
+    /// Explicit injection point for isolated integration tests.
+    #[cfg(test)]
+    pub(crate) fn for_test(path: PathBuf) -> Self {
+        Self(path)
+    }
+
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// Metadata read from one launcher managed by Git Pin.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManagedLauncher {
+    pub name: String,
+    pub root: PathBuf,
+    pub path: PathBuf,
+}
+
+/// Result of inspecting the platform location for a repository name.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LauncherInspection {
+    Missing,
+    Managed(ManagedLauncher),
+    Foreign { path: PathBuf },
+}
+
+/// Result of an atomic create attempt after an initially missing inspection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CreateOutcome {
+    Created(ManagedLauncher),
+    Occupied(LauncherInspection),
+}
+
+/// Native behavior required by the shared application orchestration.
+pub trait LauncherBackend {
+    /// The isolated or system launcher root owned by this backend instance.
+    fn launcher_root(&self) -> &LauncherRoot;
+
+    /// Resolves and validates the stable Visual Studio Code GUI executable.
+    fn vscode_executable(&self) -> Result<PathBuf, AppError>;
+
+    /// Inspects the exact launcher slot associated with `name`.
+    fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError>;
+
+    /// Creates and atomically commits a launcher into a previously missing slot.
+    fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError>;
+
+    /// Removes exactly the launcher that was previously inspected and verified.
+    fn remove(&self, launcher: &ManagedLauncher) -> Result<(), AppError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LauncherRoot;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_launcher_root_is_explicitly_injected() {
+        let path = PathBuf::from("isolated-launchers");
+        let root = LauncherRoot::for_test(path.clone());
+        assert_eq!(root.as_path(), path);
+    }
+}
