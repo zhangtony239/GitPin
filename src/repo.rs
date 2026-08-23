@@ -69,7 +69,10 @@ fn validate_name(name: &str, platform: Platform) -> Result<(), &'static str> {
     if name == "." || name == ".." {
         return Err("dot path components are not launcher names");
     }
-    if name.chars().any(|character| character == '\0' || character == '/') {
+    if name
+        .chars()
+        .any(|character| character == '\0' || character == '/')
+    {
         return Err("the name contains a path separator or NUL");
     }
 
@@ -95,9 +98,28 @@ fn validate_windows_name(name: &str) -> Result<(), &'static str> {
     let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
     let reserved = matches!(
         stem.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "COM1" | "COM2" | "COM3" | "COM4" | "COM5"
-            | "COM6" | "COM7" | "COM8" | "COM9" | "LPT1" | "LPT2" | "LPT3" | "LPT4"
-            | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9"
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
     );
     if reserved {
         return Err("the name is reserved by Windows");
@@ -183,10 +205,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("clock must be after Unix epoch")
                 .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "git-pin-{label}-{}-{nonce}",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir()
+                .join(format!("git-pin-{label}-{}-{nonce}", std::process::id()));
             fs::create_dir_all(&path).expect("temporary directory must be created");
             Self(path)
         }
@@ -251,8 +271,7 @@ mod tests {
             repository.path(),
             &["config", "user.email", "git-pin@example.invalid"],
         );
-        fs::write(repository.path().join("tracked"), "content")
-            .expect("fixture must be written");
+        fs::write(repository.path().join("tracked"), "content").expect("fixture must be written");
         git(repository.path(), &["add", "tracked"]);
         git(repository.path(), &["commit", "-m", "fixture"]);
 
@@ -275,7 +294,9 @@ mod tests {
         let directory = TempDir::new("not-a-repository");
         let error = discover_root(directory.path()).expect_err("discovery must fail");
         assert_eq!(error.exit_code(), ExitCode::Failure);
-        assert!(error.to_string().contains(&directory.path().display().to_string()));
+        assert!(error
+            .to_string()
+            .contains(&directory.path().display().to_string()));
         assert!(error.to_string().contains("Git working tree"));
     }
 
@@ -289,7 +310,9 @@ mod tests {
         .expect_err("missing Git must fail");
         assert_eq!(error.exit_code(), ExitCode::Failure);
         assert!(error.to_string().contains("could not run Git"));
-        assert!(error.to_string().contains(&directory.path().display().to_string()));
+        assert!(error
+            .to_string()
+            .contains(&directory.path().display().to_string()));
     }
 
     #[test]
