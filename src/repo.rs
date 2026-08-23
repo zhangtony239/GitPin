@@ -130,16 +130,18 @@ fn validate_windows_name(name: &str) -> Result<(), &'static str> {
 
 /// Compares normalized repository roots using the selected platform semantics.
 pub fn paths_equivalent(left: &Path, right: &Path, platform: Platform) -> bool {
-    match platform {
-        Platform::Windows => {
-            let canonical_left = std::fs::canonicalize(left);
-            let canonical_right = std::fs::canonicalize(right);
-            match (canonical_left, canonical_right) {
-                (Ok(left), Ok(right)) => windows_path_key(&left) == windows_path_key(&right),
-                _ => windows_path_key(left) == windows_path_key(right),
-            }
+    let canonical = match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => Some((left, right)),
+        _ => None,
+    };
+
+    match (platform, canonical) {
+        (Platform::Windows, Some((left, right))) => {
+            windows_path_key(&left) == windows_path_key(&right)
         }
-        Platform::Linux | Platform::MacOs => left == right,
+        (Platform::Windows, None) => windows_path_key(left) == windows_path_key(right),
+        (Platform::Linux | Platform::MacOs, Some((left, right))) => left == right,
+        (Platform::Linux | Platform::MacOs, None) => left == right,
     }
 }
 
