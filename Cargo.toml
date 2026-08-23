@@ -1,0 +1,31 @@
+[package]
+name = "git-pin"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "Pin Git repositories to the native desktop launcher"
+repository = "https://github.com/example/git-pin"
+
+[lib]
+name = "git_pin"
+path = "src/lib.rs"
+
+[[bin]]
+name = "git-pin"
+path = "src/bin/git-pin.rs"
+
+[[bin]]
+name = "git-unpin"
+path = "src/bin/git-unpin.rs"
+
+[[bin]]
+name = "git-pin-launcher"
+path = "src/bin/git-pin-launcher.rs"
+required-features = ["macos-launcher"]
+
+[features]
+default = []
+macos-launcher = []
+
+[dependencies]
+

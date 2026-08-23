@@ -1,7 +1,7 @@
 ## 1. 项目骨架与首个 CI 反馈
 
-- [ ] 1.1 创建单 Rust package、提交 lockfile，并建立 library modules、`git-pin`/`git-unpin` 两个薄 binary 以及仅在 macOS 构建的内部 launcher target；此提交只要求三个原生 OS runner 均可编译
-- [ ] 1.2 添加 MIT `LICENSE`、最小 `README.md`、repository ignore/settings，并说明本地无需 Rust、所有编译验证以 GitHub Actions 为准
+- [x] 1.1 创建单 Rust package、提交 lockfile，并建立 library modules、`git-pin`/`git-unpin` 两个薄 binary 以及仅在 macOS 构建的内部 launcher target；此提交只要求三个原生 OS runner 均可编译
+- [x] 1.2 添加 MIT `LICENSE`、最小 `README.md`、repository ignore/settings，并说明本地无需 Rust、所有编译验证以 GitHub Actions 为准
 - [ ] 1.3 添加 PR/main CI workflow，在 Windows、Linux、macOS 原生 runner 执行 fmt check、拒绝 warning 的 clippy、test 与 release build，并启用 Cargo 缓存；推送并确认首轮矩阵绿色
 
 ## 2. 核心命令与 Repository 发现
