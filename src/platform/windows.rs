@@ -456,6 +456,14 @@ impl LauncherBackend for WindowsBackend {
 
     fn remove(&self, launcher: &ManagedLauncher) -> Result<(), AppError> {
         let _apartment = ComApartment::initialize()?;
+        let expected_path = self.launcher_path(&launcher.name);
+        if !paths_equivalent(&expected_path, &launcher.path, Platform::Windows) {
+            return Err(AppError::failure(format!(
+                "refusing to remove Windows Shell Link '{}' outside managed launcher root '{}'",
+                launcher.path.display(),
+                self.root.as_path().display()
+            )));
+        }
         match self.inspect_path(&launcher.name, launcher.path.clone())? {
             LauncherInspection::Missing => Ok(()),
             LauncherInspection::Managed(current)
@@ -575,10 +583,22 @@ mod tests {
 
         create_shell_link(&shortcut, &repository, &code).expect("Shell Link must be created");
         let fields = read_shell_link(&shortcut).expect("Shell Link must be readable");
-        assert_eq!(fields.target, code);
+        assert!(paths_equivalent(
+            &fields.target,
+            &code,
+            Platform::Windows
+        ));
         assert_eq!(fields.arguments, quote_single_argument(root.as_os_str()));
-        assert_eq!(fields.root, root);
-        assert_eq!(fields.icon, fields.target);
+        assert!(paths_equivalent(
+            &fields.root,
+            &root,
+            Platform::Windows
+        ));
+        assert!(paths_equivalent(
+            &fields.icon,
+            &fields.target,
+            Platform::Windows
+        ));
         assert_eq!(fields.description, OsStr::new(FORMAT_DESCRIPTION));
     }
 
