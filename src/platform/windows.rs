@@ -165,7 +165,9 @@ fn resolve_gui_executable(candidate: &Path) -> Option<PathBuf> {
     if candidate.is_absolute() {
         Some(candidate.to_owned())
     } else {
-        env::current_dir().ok().map(|directory| directory.join(candidate))
+        env::current_dir()
+            .ok()
+            .map(|directory| directory.join(candidate))
     }
 }
 
