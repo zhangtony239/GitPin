@@ -48,9 +48,7 @@ impl LinuxBackend {
             root: LauncherRoot::for_test(root),
             path: None,
             vscode_override: Some(vscode),
-            refresh_override: Some(PathBuf::from(
-                "git-pin-disabled-update-desktop-database",
-            )),
+            refresh_override: Some(PathBuf::from("git-pin-disabled-update-desktop-database")),
         }
     }
 
@@ -313,11 +311,7 @@ impl LauncherBackend for LinuxBackend {
         self.inspect_path(name, path)
     }
 
-    fn create(
-        &self,
-        repository: &Repository,
-        vscode: &Path,
-    ) -> Result<CreateOutcome, AppError> {
+    fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError> {
         fs::create_dir_all(self.root.as_path()).map_err(|error| {
             AppError::failure(format!(
                 "could not create Linux launcher directory '{}': {error}",
@@ -360,8 +354,9 @@ impl LauncherBackend for LinuxBackend {
                 },
             )?;
             match self.inspect_path(repository.name(), temporary.clone())? {
-                LauncherInspection::Managed(launcher)
-                    if launcher.root == repository.root() => Ok(()),
+                LauncherInspection::Managed(launcher) if launcher.root == repository.root() => {
+                    Ok(())
+                }
                 _ => Err(AppError::failure(format!(
                     "temporary Linux launcher '{}' failed managed metadata validation",
                     temporary.display()
@@ -452,10 +447,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("clock must be after Unix epoch")
                 .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "git-pin-linux-test-{}-{nonce}",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir()
+                .join(format!("git-pin-linux-test-{}-{nonce}", std::process::id()));
             fs::create_dir_all(&path).expect("temporary directory must be created");
             Self(path)
         }
@@ -625,11 +618,9 @@ mod tests {
         fs::write(&success, "#!/bin/sh\nexit 0\n").expect("refresh fixture must be written");
         fs::set_permissions(&success, fs::Permissions::from_mode(0o755))
             .expect("refresh fixture permissions must be set");
-        let successful_backend = LinuxBackend::for_test(
-            temporary.0.join("success-applications"),
-            code.clone(),
-        )
-        .with_refresh_command(success);
+        let successful_backend =
+            LinuxBackend::for_test(temporary.0.join("success-applications"), code.clone())
+                .with_refresh_command(success);
         assert_eq!(successful_backend.refresh(), None);
 
         let failure = temporary.0.join("refresh-failure");
@@ -714,7 +705,9 @@ mod tests {
         );
         let error = pin(&backend, &conflicting, Platform::Linux)
             .expect_err("same-name different-root pin must conflict");
-        assert!(error.to_string().contains(&launcher.root.display().to_string()));
+        assert!(error
+            .to_string()
+            .contains(&launcher.root.display().to_string()));
 
         assert!(matches!(
             unpin(

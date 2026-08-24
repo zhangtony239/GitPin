@@ -206,7 +206,9 @@ fn quote_single_argument(argument: &OsStr) -> OsString {
 fn create_shell_link(path: &Path, repository: &Repository, vscode: &Path) -> Result<(), AppError> {
     let link: IShellLinkW = unsafe {
         CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(|error| {
-            AppError::failure(format!("could not create Windows Shell Link COM object: {error}"))
+            AppError::failure(format!(
+                "could not create Windows Shell Link COM object: {error}"
+            ))
         })?
     };
 
@@ -215,20 +217,31 @@ fn create_shell_link(path: &Path, repository: &Repository, vscode: &Path) -> Res
     let working_directory = wide(repository.root().as_os_str());
     let description = wide(OsStr::new(FORMAT_DESCRIPTION));
     unsafe {
-        link.SetPath(PCWSTR(target.as_ptr()))
-            .map_err(|error| AppError::failure(format!("could not set Shell Link target: {error}")))?;
-        link.SetArguments(PCWSTR(arguments.as_ptr())).map_err(|error| {
-            AppError::failure(format!("could not set Shell Link repository argument: {error}"))
+        link.SetPath(PCWSTR(target.as_ptr())).map_err(|error| {
+            AppError::failure(format!("could not set Shell Link target: {error}"))
         })?;
+        link.SetArguments(PCWSTR(arguments.as_ptr()))
+            .map_err(|error| {
+                AppError::failure(format!(
+                    "could not set Shell Link repository argument: {error}"
+                ))
+            })?;
         link.SetWorkingDirectory(PCWSTR(working_directory.as_ptr()))
             .map_err(|error| {
-                AppError::failure(format!("could not set Shell Link working directory: {error}"))
+                AppError::failure(format!(
+                    "could not set Shell Link working directory: {error}"
+                ))
             })?;
         link.SetIconLocation(PCWSTR(target.as_ptr()), 0)
-            .map_err(|error| AppError::failure(format!("could not set Shell Link icon: {error}")))?;
-        link.SetDescription(PCWSTR(description.as_ptr())).map_err(|error| {
-            AppError::failure(format!("could not set Shell Link managed metadata: {error}"))
-        })?;
+            .map_err(|error| {
+                AppError::failure(format!("could not set Shell Link icon: {error}"))
+            })?;
+        link.SetDescription(PCWSTR(description.as_ptr()))
+            .map_err(|error| {
+                AppError::failure(format!(
+                    "could not set Shell Link managed metadata: {error}"
+                ))
+            })?;
     }
 
     let persist: IPersistFile = link.cast().map_err(|error| {
@@ -261,7 +274,9 @@ fn create_shell_link(path: &Path, repository: &Repository, vscode: &Path) -> Res
 fn read_shell_link(path: &Path) -> Result<ShellLinkData, AppError> {
     let link: IShellLinkW = unsafe {
         CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(|error| {
-            AppError::failure(format!("could not create Windows Shell Link COM object: {error}"))
+            AppError::failure(format!(
+                "could not create Windows Shell Link COM object: {error}"
+            ))
         })?
     };
     let persist: IPersistFile = link.cast().map_err(|error| {
@@ -289,18 +304,26 @@ fn read_shell_link(path: &Path) -> Result<ShellLinkData, AppError> {
     let mut icon_index = 0_i32;
     unsafe {
         link.GetPath(&mut target, ptr::null_mut(), SLGP_RAWPATH.0 as _)
-            .map_err(|error| AppError::failure(format!("could not read Shell Link target: {error}")))?;
+            .map_err(|error| {
+                AppError::failure(format!("could not read Shell Link target: {error}"))
+            })?;
         link.GetArguments(&mut arguments).map_err(|error| {
             AppError::failure(format!("could not read Shell Link arguments: {error}"))
         })?;
         link.GetWorkingDirectory(&mut working_directory)
             .map_err(|error| {
-                AppError::failure(format!("could not read Shell Link working directory: {error}"))
+                AppError::failure(format!(
+                    "could not read Shell Link working directory: {error}"
+                ))
             })?;
         link.GetIconLocation(&mut icon, &mut icon_index)
-            .map_err(|error| AppError::failure(format!("could not read Shell Link icon: {error}")))?;
+            .map_err(|error| {
+                AppError::failure(format!("could not read Shell Link icon: {error}"))
+            })?;
         link.GetDescription(&mut description).map_err(|error| {
-            AppError::failure(format!("could not read Shell Link managed metadata: {error}"))
+            AppError::failure(format!(
+                "could not read Shell Link managed metadata: {error}"
+            ))
         })?;
     }
 
@@ -363,11 +386,7 @@ impl LauncherBackend for WindowsBackend {
         self.inspect_path(name, path)
     }
 
-    fn create(
-        &self,
-        repository: &Repository,
-        vscode: &Path,
-    ) -> Result<CreateOutcome, AppError> {
+    fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError> {
         let _apartment = ComApartment::initialize()?;
         fs::create_dir_all(self.root.as_path()).map_err(|error| {
             AppError::failure(format!(
@@ -594,7 +613,9 @@ mod tests {
                 .to_string_lossy()
                 .contains(".tmp.lnk")));
 
-        backend.remove(&launcher).expect("managed removal must succeed");
+        backend
+            .remove(&launcher)
+            .expect("managed removal must succeed");
         assert!(!launcher.path.exists());
     }
 
@@ -659,8 +680,7 @@ mod tests {
             Platform::Windows
         ));
         assert!(matches!(
-            pin(&backend, &repository, Platform::Windows)
-                .expect("repeat pin must be idempotent"),
+            pin(&backend, &repository, Platform::Windows).expect("repeat pin must be idempotent"),
             PinOutcome::AlreadyPinned(_)
         ));
 
