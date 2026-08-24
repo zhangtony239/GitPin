@@ -20,13 +20,13 @@ const EXECUTABLE_NAME: &str = "git-pin-launcher";
 /// macOS implementation backed by user-level application bundles.
 pub struct MacOsBackend {
     root: LauncherRoot,
-    launcher_binary: PathBuf,
+    source_executable: PathBuf,
     registration_command: PathBuf,
     vscode_applications: Vec<PathBuf>,
 }
 
 impl MacOsBackend {
-    /// Resolves the production user Applications root and current launcher binary.
+    /// Resolves the production user Applications root and current git-pin executable.
     pub fn new() -> Result<Self, AppError> {
         let home = env::var_os("HOME").ok_or_else(|| {
             AppError::failure(
@@ -45,18 +45,9 @@ impl MacOsBackend {
                 "could not locate current git-pin executable for macOS bundles: {error}"
             ))
         })?;
-        let launcher_binary = current_executable
-            .parent()
-            .ok_or_else(|| {
-                AppError::failure(format!(
-                    "current executable '{}' has no containing directory",
-                    current_executable.display()
-                ))
-            })?
-            .join(EXECUTABLE_NAME);
         Ok(Self {
             root: LauncherRoot::system(home.join("Applications/Git Pin")),
-            launcher_binary,
+            source_executable: current_executable,
             registration_command: PathBuf::from(
                 "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
             ),
@@ -68,10 +59,10 @@ impl MacOsBackend {
     }
 
     #[cfg(test)]
-    fn for_test(root: PathBuf, launcher_binary: PathBuf, vscode_application: PathBuf) -> Self {
+    fn for_test(root: PathBuf, source_executable: PathBuf, vscode_application: PathBuf) -> Self {
         Self {
             root: LauncherRoot::for_test(root),
-            launcher_binary,
+            source_executable,
             registration_command: PathBuf::from("git-pin-disabled-lsregister"),
             vscode_applications: vec![vscode_application],
         }
@@ -265,16 +256,16 @@ impl LauncherBackend for MacOsBackend {
     }
 
     fn create(&self, repository: &Repository, _vscode: &Path) -> Result<CreateOutcome, AppError> {
-        let launcher_metadata = fs::metadata(&self.launcher_binary).map_err(|error| {
+        let launcher_metadata = fs::metadata(&self.source_executable).map_err(|error| {
             AppError::failure(format!(
-                "could not access current-architecture macOS launcher '{}': {error}",
-                self.launcher_binary.display()
+                "could not access current git-pin executable '{}': {error}",
+                self.source_executable.display()
             ))
         })?;
         if !launcher_metadata.is_file() {
             return Err(AppError::failure(format!(
-                "current-architecture macOS launcher '{}' is not a file",
-                self.launcher_binary.display()
+                "current git-pin executable '{}' is not a file",
+                self.source_executable.display()
             )));
         }
         fs::create_dir_all(self.root.as_path()).map_err(|error| {
@@ -307,9 +298,9 @@ impl LauncherBackend for MacOsBackend {
                 ))
             })?;
             let installed_launcher = macos.join(EXECUTABLE_NAME);
-            fs::copy(&self.launcher_binary, &installed_launcher).map_err(|error| {
+            fs::copy(&self.source_executable, &installed_launcher).map_err(|error| {
                 AppError::failure(format!(
-                    "could not install current-architecture launcher in '{}': {error}",
+                    "could not copy current git-pin executable into '{}': {error}",
                     temporary.display()
                 ))
             })?;
@@ -515,6 +506,10 @@ mod tests {
         let installed_launcher = managed.path.join("Contents/MacOS").join(EXECUTABLE_NAME);
         assert!(plist.is_file());
         assert!(installed_launcher.is_file());
+        assert_eq!(
+            fs::read(&installed_launcher).expect("installed launcher must be readable"),
+            fs::read(&backend.source_executable).expect("source executable must be readable")
+        );
         assert_eq!(
             fs::metadata(&installed_launcher)
                 .expect("installed launcher metadata must exist")

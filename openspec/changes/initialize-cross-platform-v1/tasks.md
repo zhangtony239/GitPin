@@ -48,9 +48,9 @@
 
 ## 8. macOS 自包含重构与独立 CI
 
-- [ ] 8.1 让 `git-pin` 仅在严格验证 executable 位于受管 `.app/Contents/MacOS` 结构且所属 plist metadata 有效时进入内部 launcher 路径，其他执行保持公开 `git pin [path]` 语义，并保持 `git unpin [path|name]` 契约不变
-- [ ] 8.2 重构 macOS backend，使创建 bundle 时将当前 `git-pin` executable 自复制为内部启动入口；删除对发布目录中相邻辅助 executable 的运行时依赖，以及不再需要的第三 binary target/feature
-- [ ] 8.3 添加 macOS process/integration 测试，从只含 `git-pin` 与 `git-unpin` 的模拟发布目录验证 pin、bundle inspect、内部 root 读取与安全启动参数、unpin，以及两个公开 Git 子指令不发生行为漂移
+- [x] 8.1 让 `git-pin` 仅在严格验证 executable 位于受管 `.app/Contents/MacOS` 结构且所属 plist metadata 有效时进入内部 launcher 路径，其他执行保持公开 `git pin [path]` 语义，并保持 `git unpin [path|name]` 契约不变
+- [x] 8.2 重构 macOS backend，使创建 bundle 时将当前 `git-pin` executable 自复制为内部启动入口；删除对发布目录中相邻辅助 executable 的运行时依赖，以及不再需要的第三 binary target/feature
+- [x] 8.3 添加 macOS process/integration 测试，从只含 `git-pin` 与 `git-unpin` 的模拟发布目录验证 pin、bundle inspect、内部 root 读取与安全启动参数、unpin，以及两个公开 Git 子指令不发生行为漂移
 - [ ] 8.4 在普通 CI 中添加独立 macOS 自包含 job，使用 release build 的两个正式 binary 运行隔离 smoke test；推送并确认该门禁绿色后再实现统一 release workflow
 
 ## 9. release.yml 统一构建、合规与公开 Release

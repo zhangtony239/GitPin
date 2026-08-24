@@ -22,13 +22,10 @@ jobs:
         include:
           - name: Linux
             os: ubuntu-latest
-            features: ""
           - name: Windows
             os: windows-latest
-            features: ""
           - name: macOS
             os: macos-latest
-            features: --features macos-launcher
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -47,10 +44,64 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run Clippy
-        run: cargo clippy --all-targets ${{ matrix.features }} -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --all-targets ${{ matrix.features }}
+        run: cargo test --all-targets
 
       - name: Build release binaries
-        run: cargo build --release --bins ${{ matrix.features }}
+        run: cargo build --release --bins
+
+  macos-self-contained:
+    name: macOS self-contained bundle
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build the two release binaries
+        run: cargo build --release --bins
+
+      - name: Run isolated two-binary smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sandbox="$(mktemp -d)"
+          trap 'rm -rf "$sandbox"' EXIT
+          release="$sandbox/release"
+          home="$sandbox/home"
+          repository="$sandbox/repositories/project with spaces & shell;\$HOME"
+          mkdir -p "$release" "$home/Applications/Visual Studio Code.app" "$repository"
+
+          cp target/release/git-pin target/release/git-unpin "$release/"
+          chmod 755 "$release/git-pin" "$release/git-unpin"
+          test "$(find "$release" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+          test -x "$release/git-pin"
+          test -x "$release/git-unpin"
+
+          git -C "$repository" init
+          export HOME="$home"
+          export PATH="$release:$PATH"
+
+          git -C "$repository" pin
+          bundle="$home/Applications/Git Pin/$(basename "$repository").app"
+          embedded="$bundle/Contents/MacOS/git-pin-launcher"
+          test -f "$bundle/Contents/Info.plist"
+          test -x "$embedded"
+          cmp "$release/git-pin" "$embedded"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" | grep -Fx 'git-pin-launcher'
+          /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Format-Version' "$bundle/Contents/Info.plist" | grep -Fx '1'
+          /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Repository-Root' "$bundle/Contents/Info.plist" | grep -Fx "$repository"
+
+          git -C "$repository" pin | grep -F 'already pinned'
+          git -C "$repository" unpin
+          test ! -e "$bundle"
+          test -z "$(find "$home/Applications/Git Pin" -mindepth 1 -maxdepth 1 -print -quit)"

@@ -271,3 +271,109 @@ fn repository_errors_include_context_and_do_not_create_launchers() {
         "repository failure must not create a launcher"
     );
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let environment = ProcessEnvironment::new("macos-self-contained");
+    let release = environment.root.0.join("release");
+    fs::create_dir_all(&release).expect("simulated release directory must be created");
+    let release_pin = release.join("git-pin");
+    let release_unpin = release.join("git-unpin");
+    fs::copy(git_pin(), &release_pin).expect("git-pin must be staged");
+    fs::copy(git_unpin(), &release_unpin).expect("git-unpin must be staged");
+    for binary in [&release_pin, &release_unpin] {
+        fs::set_permissions(binary, fs::Permissions::from_mode(0o755))
+            .expect("staged binary must be executable");
+    }
+    let mut staged_files = release
+        .read_dir()
+        .expect("release directory must be readable")
+        .map(|entry| entry.expect("release entry must be readable").file_name())
+        .collect::<Vec<_>>();
+    staged_files.sort();
+    assert_eq!(
+        staged_files,
+        [OsString::from("git-pin"), OsString::from("git-unpin")]
+    );
+
+    for (binary, usage) in [
+        (&release_pin, "usage: git pin [path]"),
+        (&release_unpin, "usage: git unpin [path|name]"),
+    ] {
+        let output = run(environment.command(binary).arg("--all"));
+        assert_eq!(output.status.code(), Some(2));
+        assert_failure_with(&output, usage);
+    }
+
+    let repository = environment
+        .root
+        .0
+        .join("repositories/project with spaces & shell;$HOME");
+    initialize_repository(&repository);
+    let release_path = env::join_paths(
+        [release.as_path()]
+            .into_iter()
+            .chain(env::split_paths(&environment.path)),
+    )
+    .expect("release PATH must be valid");
+
+    let output = run(environment
+        .command("git")
+        .env("PATH", &release_path)
+        .current_dir(&repository)
+        .arg("pin"));
+    assert_success(&output);
+    let bundle = environment.launcher("project with spaces & shell;$HOME");
+    let embedded = bundle.join("Contents/MacOS/git-pin-launcher");
+    assert!(
+        embedded.is_file(),
+        "bundle must contain an executable entry"
+    );
+    assert_eq!(
+        fs::read(&embedded).expect("embedded executable must be readable"),
+        fs::read(&release_pin).expect("staged git-pin must be readable")
+    );
+
+    let fake_open = environment.root.0.join("fake-open/open");
+    fs::create_dir_all(fake_open.parent().expect("fake open must have a parent"))
+        .expect("fake open directory must be created");
+    fs::write(
+        &fake_open,
+        "#!/bin/sh\nscript_dir=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\nprintf '%s\\n' \"$@\" > \"$script_dir/arguments.txt\"\n",
+    )
+    .expect("fake open must be written");
+    fs::set_permissions(&fake_open, fs::Permissions::from_mode(0o755))
+        .expect("fake open must be executable");
+    git_pin::macos_launcher::run_with(&embedded, &fake_open)
+        .expect("embedded entry must read and launch the managed root");
+    assert_eq!(
+        fs::read_to_string(
+            fake_open
+                .parent()
+                .expect("fake open must have a parent")
+                .join("arguments.txt")
+        )
+        .expect("captured open arguments must be readable"),
+        format!("-a\nVisual Studio Code\n--args\n{}\n", repository.display())
+    );
+
+    let output = run(environment
+        .command("git")
+        .env("PATH", &release_path)
+        .current_dir(&repository)
+        .arg("pin"));
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("already pinned"));
+
+    let output = run(environment
+        .command("git")
+        .env("PATH", &release_path)
+        .current_dir(&repository)
+        .arg("unpin"));
+    assert_success(&output);
+    assert!(!bundle.exists(), "public git unpin must remove the bundle");
+    environment.assert_no_launcher_residue();
+}

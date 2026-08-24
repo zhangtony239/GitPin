@@ -18,15 +18,6 @@ path = "src/bin/git-pin.rs"
 name = "git-unpin"
 path = "src/bin/git-unpin.rs"
 
-[[bin]]
-name = "git-pin-launcher"
-path = "src/bin/git-pin-launcher.rs"
-required-features = ["macos-launcher"]
-
-[features]
-default = []
-macos-launcher = []
-
 [dependencies]
 
 [target.'cfg(windows)'.dependencies]
