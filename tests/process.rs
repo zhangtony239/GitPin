@@ -314,9 +314,7 @@ fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
         .join("repositories/project with spaces & shell;$HOME");
     initialize_repository(&repository);
     let release_path = env::join_paths(
-        [release.as_path()]
-            .into_iter()
-            .chain(env::split_paths(&environment.path)),
+        std::iter::once(release.clone()).chain(env::split_paths(&environment.path)),
     )
     .expect("release PATH must be valid");
 
