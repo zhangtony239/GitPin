@@ -5,9 +5,7 @@ use std::path::Path;
 
 use crate::cli::{Invocation, Operation};
 use crate::error::AppError;
-use crate::launcher::{
-    CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher,
-};
+use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::repo::{launcher_name, paths_equivalent, Platform, Repository};
 
 /// Successful states returned by pin orchestration.
@@ -51,18 +49,20 @@ pub fn pin<B: LauncherBackend>(
             repository.root().display()
         ))
     })? {
-        LauncherInspection::Missing => match backend.create(repository, &vscode).map_err(|error| {
-            AppError::failure(format!(
-                "could not atomically create launcher '{}' for '{}': {error}",
-                repository.name(),
-                repository.root().display()
-            ))
-        })? {
-            CreateOutcome::Created(launcher) => Ok(PinOutcome::Created(launcher)),
-            CreateOutcome::Occupied(inspection) => {
-                resolve_existing(repository, platform, inspection)
+        LauncherInspection::Missing => {
+            match backend.create(repository, &vscode).map_err(|error| {
+                AppError::failure(format!(
+                    "could not atomically create launcher '{}' for '{}': {error}",
+                    repository.name(),
+                    repository.root().display()
+                ))
+            })? {
+                CreateOutcome::Created(launcher) => Ok(PinOutcome::Created(launcher)),
+                CreateOutcome::Occupied(inspection) => {
+                    resolve_existing(repository, platform, inspection)
+                }
             }
-        },
+        }
         inspection => resolve_existing(repository, platform, inspection),
     }
 }
@@ -177,9 +177,7 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        pin, resolve_unpin_target, unpin, PinOutcome, UnpinOutcome, UnpinTarget,
-    };
+    use super::{pin, resolve_unpin_target, unpin, PinOutcome, UnpinOutcome, UnpinTarget};
     use crate::error::AppError;
     use crate::launcher::{
         CreateOutcome, LauncherBackend, LauncherInspection, LauncherRoot, ManagedLauncher,
@@ -198,10 +196,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("clock must be after Unix epoch")
                 .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "git-pin-app-test-{}-{nonce}",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir()
+                .join(format!("git-pin-app-test-{}-{nonce}", std::process::id()));
             fs::create_dir_all(&path).expect("temporary root must be created");
             Self(path)
         }
@@ -351,7 +347,10 @@ mod tests {
             path: foreign.clone(),
         });
         assert!(pin(&backend, &repository("/work/project"), Platform::Linux).is_err());
-        assert!(!foreign.exists(), "orchestration must not touch foreign paths");
+        assert!(
+            !foreign.exists(),
+            "orchestration must not touch foreign paths"
+        );
     }
 
     #[test]
@@ -360,8 +359,7 @@ mod tests {
         let backend = FakeBackend::new(temporary.0.clone());
         let repository = repository("/work/project");
         let raced = backend.launcher("project", repository.root());
-        *backend.occupied_on_create.borrow_mut() =
-            Some(LauncherInspection::Managed(raced.clone()));
+        *backend.occupied_on_create.borrow_mut() = Some(LauncherInspection::Managed(raced.clone()));
 
         assert_eq!(
             pin(&backend, &repository, Platform::Linux).expect("same-root race is idempotent"),

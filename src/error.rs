@@ -83,7 +83,10 @@ mod tests {
     fn failures_are_diagnostic_and_use_stable_exit_codes() {
         let mut stderr = Vec::new();
         assert_eq!(
-            report_to(Err(AppError::failure("could not create launcher")), &mut stderr),
+            report_to(
+                Err(AppError::failure("could not create launcher")),
+                &mut stderr
+            ),
             1
         );
         assert_eq!(
