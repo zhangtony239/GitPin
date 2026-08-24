@@ -313,6 +313,8 @@ fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
         .0
         .join("repositories/project with spaces & shell;$HOME");
     initialize_repository(&repository);
+    let canonical_repository = fs::canonicalize(&repository)
+        .expect("repository path must have an absolute canonical form");
     let release_path = env::join_paths(
         std::iter::once(release.clone()).chain(env::split_paths(&environment.path)),
     )
@@ -355,7 +357,10 @@ fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
                 .join("arguments.txt")
         )
         .expect("captured open arguments must be readable"),
-        format!("-a\nVisual Studio Code\n--args\n{}\n", repository.display())
+        format!(
+            "-a\nVisual Studio Code\n--args\n{}\n",
+            canonical_repository.display()
+        )
     );
 
     let output = run(environment
