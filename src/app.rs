@@ -236,12 +236,11 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("clock must be after Unix epoch")
                 .as_nanos();
-            let path = std::env::temp_dir()
-                .join(format!(
-                    "git-pin-app-test-{}-{nonce}-{}",
-                    std::process::id(),
-                    TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
-                ));
+            let path = std::env::temp_dir().join(format!(
+                "git-pin-app-test-{}-{nonce}-{}",
+                std::process::id(),
+                TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+            ));
             fs::create_dir_all(&path).expect("temporary root must be created");
             Self(path)
         }
