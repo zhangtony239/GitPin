@@ -583,17 +583,9 @@ mod tests {
 
         create_shell_link(&shortcut, &repository, &code).expect("Shell Link must be created");
         let fields = read_shell_link(&shortcut).expect("Shell Link must be readable");
-        assert!(paths_equivalent(
-            &fields.target,
-            &code,
-            Platform::Windows
-        ));
+        assert!(paths_equivalent(&fields.target, &code, Platform::Windows));
         assert_eq!(fields.arguments, quote_single_argument(root.as_os_str()));
-        assert!(paths_equivalent(
-            &fields.root,
-            &root,
-            Platform::Windows
-        ));
+        assert!(paths_equivalent(&fields.root, &root, Platform::Windows));
         assert!(paths_equivalent(
             &fields.icon,
             &fields.target,
