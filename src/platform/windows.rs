@@ -27,11 +27,13 @@ struct ComApartment;
 
 impl ComApartment {
     fn initialize() -> Result<Self, AppError> {
-        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.map_err(|error| {
-            AppError::failure(format!(
-                "could not initialize the Windows Shell COM apartment: {error}"
-            ))
-        })?;
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+            .ok()
+            .map_err(|error| {
+                AppError::failure(format!(
+                    "could not initialize the Windows Shell COM apartment: {error}"
+                ))
+            })?;
         Ok(Self)
     }
 }
