@@ -41,10 +41,10 @@
 
 ## 7. 端到端行为与文档
 
-- [ ] 7.1 为两个正式 binary 添加 process-level 测试，验证 Git 外部命令分派、当前目录/路径/name 输入、幂等、冲突、错误上下文和退出状态
-- [ ] 7.2 在各原生 CI runner 运行隔离端到端 smoke test：创建临时 Git repository、pin、inspect 平台 launcher、重复 pin、unpin，并保证 teardown 无残留
+- [x] 7.1 为两个正式 binary 添加 process-level 测试，验证 Git 外部命令分派、当前目录/路径/name 输入、幂等、冲突、错误上下文和退出状态
+- [x] 7.2 在各原生 CI runner 运行隔离端到端 smoke test：创建临时 Git repository、pin、inspect 平台 launcher、重复 pin、unpin，并保证 teardown 无残留
 - [x] 7.3 完成 README 的三平台前置条件、portable 安装、命令示例、入口位置、名称冲突、稳定版 VS Code 限制、macOS 未签名提示和 V1 非目标文档
-- [ ] 7.4 推送端到端与文档小步，确认 fmt、clippy、全部测试和三平台 release build 均绿色
+- [x] 7.4 推送端到端与文档小步，确认 fmt、clippy、全部测试和三平台 release build 均绿色
 
 ## 8. Portable Packaging
 
