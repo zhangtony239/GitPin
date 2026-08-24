@@ -16,20 +16,20 @@
 - [x] 3.1 定义 `Repository`、受管 launcher inspection 结果和窄 `LauncherBackend` trait，并允许测试注入 launcher root 而 production constructor 固定系统目录
 - [x] 3.2 实现共享 pin orchestration：VS Code 依赖确认、首次创建、同 root 幂等、不同 root 冲突、原子提交失败清理和可诊断错误
 - [x] 3.3 实现共享 unpin 分派与语义：无参数当前仓库、现存路径优先、否则精确名称、目标缺失幂等、按路径目标不匹配时拒绝删除
-- [ ] 3.4 使用 fake backend 和临时目录覆盖创建/读取/删除失败、竞态冲突、不留半成品、不删除非受管产物及 stdout/stderr/exit-code 契约；推送并确认 CI 绿色
+- [x] 3.4 使用 fake backend 和临时目录覆盖创建/读取/删除失败、竞态冲突、不留半成品、不删除非受管产物及 stdout/stderr/exit-code 契约；推送并确认 CI 绿色
 
 ## 4. Linux XDG Backend
 
-- [ ] 4.1 实现 Linux VS Code executable 查找、`XDG_DATA_HOME`/HOME 目录解析、工具前缀文件名和受管 Desktop Entry metadata
-- [ ] 4.2 实现符合 Desktop Entry Specification 的字段与 `Exec` 参数编码、临时文件原子提交、用户可执行权限、inspect 与安全删除
-- [ ] 4.3 添加 `update-desktop-database` best-effort 刷新及 warning 行为，确保工具缺失或刷新失败不撤销有效入口
-- [ ] 4.4 在 Linux CI 的隔离 launcher root 上集成测试创建、读回、冲突、删除及空格/特殊字符/非 ASCII 路径，并推送确认矩阵绿色
+- [x] 4.1 实现 Linux VS Code executable 查找、`XDG_DATA_HOME`/HOME 目录解析、工具前缀文件名和受管 Desktop Entry metadata
+- [x] 4.2 实现符合 Desktop Entry Specification 的字段与 `Exec` 参数编码、临时文件原子提交、用户可执行权限、inspect 与安全删除
+- [x] 4.3 添加 `update-desktop-database` best-effort 刷新及 warning 行为，确保工具缺失或刷新失败不撤销有效入口
+- [x] 4.4 在 Linux CI 的隔离 launcher root 上集成测试创建、读回、冲突、删除及空格/特殊字符/非 ASCII 路径，并推送确认矩阵绿色
 
 ## 5. Windows Shell Link Backend
 
-- [ ] 5.1 在 Windows target scope 添加最小 `windows` crate features，实现 COM 初始化/释放和稳定版 Visual Studio Code GUI executable 候选解析
-- [ ] 5.2 使用 `IShellLinkW` 与 `IPersistFile` 实现 `.lnk` 的 target、单参数 arguments、working directory、icon 和受管 root 读回
-- [ ] 5.3 实现 `%APPDATA%` 启动器目录、宽字符串路径、Windows 路径比较、临时 `.lnk` 原子提交与验证后删除
+- [x] 5.1 在 Windows target scope 添加最小 `windows` crate features，实现 COM 初始化/释放和稳定版 Visual Studio Code GUI executable 候选解析
+- [x] 5.2 使用 `IShellLinkW` 与 `IPersistFile` 实现 `.lnk` 的 target、单参数 arguments、working directory、icon 和受管 root 读回
+- [x] 5.3 实现 `%APPDATA%` 启动器目录、宽字符串路径、Windows 路径比较、临时 `.lnk` 原子提交与验证后删除
 - [ ] 5.4 在 Windows CI 的隔离 launcher root 上集成测试真实 Shell Link 创建/inspect/unpin、同名冲突及空格/非 ASCII 路径，并推送确认矩阵绿色
 
 ## 6. macOS Application Bundle Backend
