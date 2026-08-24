@@ -15,7 +15,15 @@ Git Pin 提供 `git pin` 与 `git unpin` 两个 Git 外部命令，用于将 Git
 
 ## Portable 安装
 
-1. 从 GitHub Release 下载与操作系统及架构匹配的 ZIP。
+V1 为 Windows、Linux 和 macOS 发布 runner-native x86_64 包：
+
+- `git-pin-v<version>-windows-x86_64.zip`
+- `git-pin-v<version>-linux-x86_64.zip`
+- `git-pin-v<version>-macos-x86_64.zip`
+
+arm64 包不属于 V1 支持矩阵，因为其完整原生构建、测试、打包和启动器行为尚未在每个宣称平台上通过 release 门禁。
+
+1. 从 GitHub Release 下载与操作系统匹配的 x86_64 ZIP。
 2. 解压 ZIP。其顶层目录包含 `git-pin`、`git-unpin`、`README.md` 和 `LICENSE`；Windows 上两个 binary 均带 `.exe` 后缀。
 3. 将解压后的顶层目录加入用户 `PATH`。
 4. 运行 `git pin --help`，确认 Git 可以分派外部命令。V1 会有意拒绝选项，因此出现 usage 信息并返回状态码 2 即表示分派正常。

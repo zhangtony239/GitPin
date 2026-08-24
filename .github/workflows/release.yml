@@ -1,0 +1,307 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag-shaped version to validate for this non-publishing dry run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      package_prefix: ${{ steps.metadata.outputs.package_prefix }}
+      publish: ${{ steps.metadata.outputs.publish }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Read and validate Cargo package version
+        id: metadata
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ inputs.release_tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version="$(cargo metadata --no-deps --format-version 1 | jq -er '.packages[] | select(.name == "git-pin") | .version')"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            tag="$REF_NAME"
+            publish=true
+          else
+            tag="$DISPATCH_TAG"
+            publish=false
+          fi
+
+          expected_tag="v$version"
+          if [[ "$tag" != "$expected_tag" ]]; then
+            echo "release tag '$tag' does not match Cargo package version '$version' (expected '$expected_tag')" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "package_prefix=git-pin-$expected_tag" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+  compliance:
+    name: Dependency licenses and advisories
+    needs: metadata
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install fixed cargo-deny version
+        run: cargo install cargo-deny --version 0.20.2 --locked
+
+      - name: Check dependency licenses, advisories, bans, and sources
+        run: cargo deny check advisories licenses bans sources
+
+  package:
+    name: Package ${{ matrix.platform }}-${{ matrix.architecture }}
+    needs:
+      - metadata
+      - compliance
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            architecture: x86_64
+            os: windows-latest
+          - platform: linux
+            architecture: x86_64
+            os: ubuntu-latest
+          - platform: macos
+            architecture: x86_64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run release tests
+        run: cargo test --locked --all-targets
+
+      - name: Build release binaries
+        run: cargo build --locked --release --bins
+
+      - name: Stage and compress Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PACKAGE_PREFIX: ${{ needs.metadata.outputs.package_prefix }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packageName = "$env:PACKAGE_PREFIX-$env:PLATFORM-$env:ARCHITECTURE"
+          $stageRoot = Join-Path $PWD "dist"
+          $packageDirectory = Join-Path $stageRoot $packageName
+          New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
+          Copy-Item "target/release/git-pin.exe" $packageDirectory
+          Copy-Item "target/release/git-unpin.exe" $packageDirectory
+          Copy-Item "README.md" $packageDirectory
+          Copy-Item "LICENSE" $packageDirectory
+          Compress-Archive -Path $packageDirectory -DestinationPath (Join-Path $stageRoot "$packageName.zip")
+
+      - name: Stage and compress Unix package
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          PACKAGE_PREFIX: ${{ needs.metadata.outputs.package_prefix }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          package_name="$PACKAGE_PREFIX-$PLATFORM-$ARCHITECTURE"
+          package_directory="dist/$package_name"
+          mkdir -p "$package_directory"
+          install -m 755 target/release/git-pin target/release/git-unpin "$package_directory/"
+          install -m 644 README.md LICENSE "$package_directory/"
+          (
+            cd dist
+            zip -q -r "$package_name.zip" "$package_name"
+          )
+
+      - name: Verify and checksum Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PACKAGE_PREFIX: ${{ needs.metadata.outputs.package_prefix }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packageName = "$env:PACKAGE_PREFIX-$env:PLATFORM-$env:ARCHITECTURE"
+          $zip = Join-Path $PWD "dist/$packageName.zip"
+          $verifyRoot = Join-Path $PWD "verify"
+          Expand-Archive -LiteralPath $zip -DestinationPath $verifyRoot
+
+          $topLevel = @(Get-ChildItem -LiteralPath $verifyRoot)
+          if ($topLevel.Count -ne 1 -or $topLevel[0].Name -cne $packageName -or -not $topLevel[0].PSIsContainer) {
+            throw "archive must contain exactly one top-level directory named '$packageName'"
+          }
+
+          $actual = @(
+            Get-ChildItem -LiteralPath $topLevel[0].FullName -File -Recurse |
+              ForEach-Object { [IO.Path]::GetRelativePath($topLevel[0].FullName, $_.FullName).Replace('\', '/') } |
+              Sort-Object
+          )
+          if (@(Get-ChildItem -LiteralPath $topLevel[0].FullName -Directory -Recurse).Count -ne 0) {
+            throw "archive must not contain nested directories"
+          }
+          $expected = @("LICENSE", "README.md", "git-pin.exe", "git-unpin.exe") | Sort-Object
+          if (Compare-Object -CaseSensitive $expected $actual) {
+            throw "archive content mismatch: expected '$($expected -join ', ')', found '$($actual -join ', ')'"
+          }
+
+          $pin = Start-Process -FilePath (Join-Path $topLevel[0].FullName "git-pin.exe") -ArgumentList "--all" -Wait -PassThru -NoNewWindow
+          if ($pin.ExitCode -ne 2) { throw "git-pin.exe did not return its expected usage exit code" }
+          $unpin = Start-Process -FilePath (Join-Path $topLevel[0].FullName "git-unpin.exe") -ArgumentList "--all" -Wait -PassThru -NoNewWindow
+          if ($unpin.ExitCode -ne 2) { throw "git-unpin.exe did not return its expected usage exit code" }
+
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          Set-Content -Encoding ascii -NoNewline -Path "$zip.sha256" -Value "$hash  $packageName.zip`n"
+
+      - name: Verify and checksum Unix package
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          PACKAGE_PREFIX: ${{ needs.metadata.outputs.package_prefix }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          package_name="$PACKAGE_PREFIX-$PLATFORM-$ARCHITECTURE"
+          zip_path="$GITHUB_WORKSPACE/dist/$package_name.zip"
+          mkdir verify
+          unzip -q "$zip_path" -d verify
+
+          test "$(find verify -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" -eq 1
+          top_level="verify/$package_name"
+          test -d "$top_level"
+          test -z "$(find "$top_level" -mindepth 1 -type d -print -quit)"
+
+          actual="$(cd "$top_level" && find . -type f -print | LC_ALL=C sort)"
+          expected="$(printf '%s\n' './LICENSE' './README.md' './git-pin' './git-unpin')"
+          test "$actual" = "$expected"
+          test -x "$top_level/git-pin"
+          test -x "$top_level/git-unpin"
+          test ! -x "$top_level/README.md"
+          test ! -x "$top_level/LICENSE"
+
+          set +e
+          "$top_level/git-pin" --all >/dev/null 2>&1
+          pin_status=$?
+          "$top_level/git-unpin" --all >/dev/null 2>&1
+          unpin_status=$?
+          set -e
+          test "$pin_status" -eq 2
+          test "$unpin_status" -eq 2
+
+          (cd dist && shasum -a 256 "$package_name.zip" > "$package_name.zip.sha256")
+
+      - name: Upload verified package and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.metadata.outputs.package_prefix }}-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: |
+            dist/${{ needs.metadata.outputs.package_prefix }}-${{ matrix.platform }}-${{ matrix.architecture }}.zip
+            dist/${{ needs.metadata.outputs.package_prefix }}-${{ matrix.platform }}-${{ matrix.architecture }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Validate assets and publish atomically
+    needs:
+      - metadata
+      - compliance
+      - package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download this run's verified artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: ${{ needs.metadata.outputs.package_prefix }}-*
+          merge-multiple: true
+
+      - name: Verify complete asset set and checksums
+        shell: bash
+        env:
+          PACKAGE_PREFIX: ${{ needs.metadata.outputs.package_prefix }}
+        run: |
+          set -euo pipefail
+          expected="$PACKAGE_PREFIX-linux-x86_64.zip
+          $PACKAGE_PREFIX-linux-x86_64.zip.sha256
+          $PACKAGE_PREFIX-macos-x86_64.zip
+          $PACKAGE_PREFIX-macos-x86_64.zip.sha256
+          $PACKAGE_PREFIX-windows-x86_64.zip
+          $PACKAGE_PREFIX-windows-x86_64.zip.sha256"
+          actual="$(find assets -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+
+          (
+            cd assets
+            for checksum in *.zip.sha256; do
+              sha256sum --check "$checksum"
+            done
+          )
+
+      - name: Create draft GitHub Release with the complete asset set
+        if: needs.metadata.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: gh release create "$RELEASE_TAG" assets/* --draft --verify-tag --title "Git Pin $RELEASE_TAG" --generate-notes
+
+      - name: Publish the complete GitHub Release
+        if: needs.metadata.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false
+
+      - name: Confirm dry run did not publish
+        if: needs.metadata.outputs.publish != 'true'
+        run: echo "Dry run validated the complete release asset set; no GitHub Release was created."

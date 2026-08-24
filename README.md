@@ -21,8 +21,18 @@ software. Git Pin does not modify `/Applications` and does not download code.
 
 ## Portable installation
 
-1. Download the ZIP matching the operating system and architecture from the
-   GitHub Release.
+V1 publishes runner-native x86_64 packages for Windows, Linux, and macOS:
+
+- `git-pin-v<version>-windows-x86_64.zip`
+- `git-pin-v<version>-linux-x86_64.zip`
+- `git-pin-v<version>-macos-x86_64.zip`
+
+Arm64 packages are not part of the V1 support matrix because their complete
+native build, test, packaging, and launcher behavior has not yet passed the
+release gate on every advertised platform.
+
+1. Download the x86_64 ZIP matching the operating system from the GitHub
+   Release.
 2. Extract the ZIP. Its top-level directory contains `git-pin`, `git-unpin`,
    `README.md`, and `LICENSE` (`.exe` is present on both Windows binaries).
 3. Add that extracted top-level directory to the user `PATH`.

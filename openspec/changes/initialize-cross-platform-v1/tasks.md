@@ -56,9 +56,9 @@
 ## 9. release.yml 统一构建、合规与公开 Release
 
 - [x] 9.1 审阅完整直接/传递 dependency 清单，移除非必要依赖并记录每项上游许可证；配置固定版本的 Rust dependency 许可证和 advisory 扫描策略，使不兼容/未知未审核许可证及策略禁止的安全公告阻断 release，并保持项目最终许可证为 MIT
-- [ ] 9.2 创建 `.github/workflows/release.yml`，以 `v*` tag 触发并提供不创建公开 Release 的 dry-run 入口；从 `Cargo.toml` 的 `[package].version` 读取唯一项目版本、校验 tag 等于 `v<version>` 并派生包名，不解析 README 获取或校验版本
-- [ ] 9.3 在 release workflow 的 Windows、Linux、macOS 原生 job 中分别完成 release build、按 OS/architecture staging 和 ZIP 生成；Windows 包装两个 `.exe`，Linux/macOS 包装两个正式 binary，统一加入 README/MIT LICENSE、同名顶层目录并保留 Unix 可执行权限
-- [ ] 9.4 在每个 release matrix job 中解压 ZIP，校验精确内容、派生目录名和版本、Unix 权限及 binary 可运行性，并为每个通过复验的 ZIP 生成 SHA-256 摘要
-- [ ] 9.5 首先落实三个原生 OS 的 runner-native/x86_64 发布组合，再逐项验证可用的 arm64 原生平台构建；无法可靠构建和测试的组合明确不加入 V1 支持矩阵
-- [ ] 9.6 添加独立 publish job，仅汇总本次 `release.yml` 生成且已经 build/test/compliance/package/checksum 全部通过的 assets，并原子式创建 GitHub Release；任一必需矩阵或门禁失败均不得发布部分版本
+- [x] 9.2 创建 `.github/workflows/release.yml`，以 `v*` tag 触发并提供不创建公开 Release 的 dry-run 入口；从 `Cargo.toml` 的 `[package].version` 读取唯一项目版本、校验 tag 等于 `v<version>` 并派生包名，不解析 README 获取或校验版本
+- [x] 9.3 在 release workflow 的 Windows、Linux、macOS 原生 job 中分别完成 release build、按 OS/architecture staging 和 ZIP 生成；Windows 包装两个 `.exe`，Linux/macOS 包装两个正式 binary，统一加入 README/MIT LICENSE、同名顶层目录并保留 Unix 可执行权限
+- [x] 9.4 在每个 release matrix job 中解压 ZIP，校验精确内容、派生目录名和版本、Unix 权限及 binary 可运行性，并为每个通过复验的 ZIP 生成 SHA-256 摘要
+- [x] 9.5 首先落实三个原生 OS 的 runner-native/x86_64 发布组合，再逐项验证可用的 arm64 原生平台构建；无法可靠构建和测试的组合明确不加入 V1 支持矩阵
+- [x] 9.6 添加独立 publish job，仅汇总本次 `release.yml` 生成且已经 build/test/compliance/package/checksum 全部通过的 assets，并原子式创建 GitHub Release；任一必需矩阵或门禁失败均不得发布部分版本
 - [ ] 9.7 以非公开 dry run 验证完整 release 流程与失败路径，复核 ZIP、SHA-256、MIT LICENSE、三平台安装说明和无管理员权限要求后，才允许创建首个公开 V1 tag
