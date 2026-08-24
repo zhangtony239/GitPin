@@ -190,7 +190,8 @@ fn create_vscode_fixture(tools: &Path) {
 
 #[cfg(target_os = "windows")]
 fn create_vscode_fixture(tools: &Path) {
-    fs::write(tools.join("code.exe"), "fixture").expect("Code fixture must be written");
+    fs::copy(git_pin(), tools.join("code.exe"))
+        .expect("a valid PE executable must be copied as the Code fixture");
 }
 
 #[cfg(target_os = "macos")]

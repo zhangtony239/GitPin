@@ -223,7 +223,10 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     struct TempDir(PathBuf);
 
@@ -234,7 +237,11 @@ mod tests {
                 .expect("clock must be after Unix epoch")
                 .as_nanos();
             let path = std::env::temp_dir()
-                .join(format!("git-pin-app-test-{}-{nonce}", std::process::id()));
+                .join(format!(
+                    "git-pin-app-test-{}-{nonce}-{}",
+                    std::process::id(),
+                    TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+                ));
             fs::create_dir_all(&path).expect("temporary root must be created");
             Self(path)
         }
