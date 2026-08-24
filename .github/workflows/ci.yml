@@ -80,6 +80,7 @@ jobs:
           home="$sandbox/home"
           repository="$sandbox/repositories/project with spaces & shell;\$HOME"
           mkdir -p "$release" "$home/Applications/Visual Studio Code.app" "$repository"
+          canonical_repository="$(cd "$repository" && pwd -P)"
 
           cp target/release/git-pin target/release/git-unpin "$release/"
           chmod 755 "$release/git-pin" "$release/git-unpin"
@@ -99,7 +100,7 @@ jobs:
           cmp "$release/git-pin" "$embedded"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" | grep -Fx 'git-pin-launcher'
           /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Format-Version' "$bundle/Contents/Info.plist" | grep -Fx '1'
-          /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Repository-Root' "$bundle/Contents/Info.plist" | grep -Fx "$repository"
+          /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Repository-Root' "$bundle/Contents/Info.plist" | grep -Fx "$canonical_repository"
 
           git -C "$repository" pin | grep -F 'already pinned'
           git -C "$repository" unpin
