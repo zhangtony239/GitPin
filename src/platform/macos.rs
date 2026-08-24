@@ -21,6 +21,8 @@ const EXECUTABLE_NAME: &str = "git-pin-launcher";
 pub struct MacOsBackend {
     root: LauncherRoot,
     launcher_binary: PathBuf,
+    registration_command: PathBuf,
+    vscode_application: PathBuf,
 }
 
 impl MacOsBackend {
@@ -55,15 +57,27 @@ impl MacOsBackend {
         Ok(Self {
             root: LauncherRoot::system(home.join("Applications/Git Pin")),
             launcher_binary,
+            registration_command: PathBuf::from(
+                "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+            ),
+            vscode_application: PathBuf::from("/Applications/Visual Studio Code.app"),
         })
     }
 
     #[cfg(test)]
-    fn for_test(root: PathBuf, launcher_binary: PathBuf) -> Self {
+    fn for_test(root: PathBuf, launcher_binary: PathBuf, vscode_application: PathBuf) -> Self {
         Self {
             root: LauncherRoot::for_test(root),
             launcher_binary,
+            registration_command: PathBuf::from("git-pin-disabled-lsregister"),
+            vscode_application,
         }
+    }
+
+    #[cfg(test)]
+    fn with_registration_command(mut self, command: PathBuf) -> Self {
+        self.registration_command = command;
+        self
     }
 
     fn bundle_path(&self, name: &str) -> PathBuf {
@@ -102,9 +116,7 @@ impl MacOsBackend {
     }
 
     fn register(&self, bundle: &Path) -> Option<String> {
-        let command = Path::new(
-            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-        );
+        let command = &self.registration_command;
         if !command.is_file() {
             return Some(format!(
                 "Launch Services registration tool was not found; bundle '{}' remains valid",
@@ -228,12 +240,15 @@ impl LauncherBackend for MacOsBackend {
     }
 
     fn vscode_executable(&self) -> Result<PathBuf, AppError> {
-        let application = PathBuf::from("/Applications/Visual Studio Code.app");
-        application.is_dir().then_some(application).ok_or_else(|| {
-            AppError::failure(
-                "could not find stable Visual Studio Code at '/Applications/Visual Studio Code.app'",
-            )
-        })
+        self.vscode_application
+            .is_dir()
+            .then_some(self.vscode_application.clone())
+            .ok_or_else(|| {
+                AppError::failure(format!(
+                    "could not find stable Visual Studio Code at '{}'",
+                    self.vscode_application.display()
+                ))
+            })
     }
 
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError> {
