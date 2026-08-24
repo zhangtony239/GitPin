@@ -16,7 +16,7 @@
 - **THEN** 所有编译型验证均可在 GitHub Actions 完成，且仓库文档明确将 CI 结果作为合并前验证依据
 
 ### Requirement: 原生平台矩阵构建
-系统 SHALL 在 Windows runner 构建 Windows 产物、Linux runner 构建 Linux 产物、macOS runner 构建 macOS 产物。每个宣称支持的 operating-system/architecture 组合 MUST 由对应操作系统的原生 runner 构建或在该原生平台上使用受支持 target；不得把单一 Linux runner 的跨平台交叉编译作为 V1 发布依据。
+系统 SHALL 由 `.github/workflows/release.yml` 在 Windows runner 构建 Windows 产物、Linux runner 构建 Linux 产物、macOS runner 构建 macOS 产物，并在同一 workflow 中完成发布暂存、ZIP 生成、包复验和 SHA-256 摘要生成。每个宣称支持的 operating-system/architecture 组合 MUST 由对应操作系统的原生 runner 构建或在该原生平台上使用受支持 target；不得把单一 Linux runner 的跨平台交叉编译作为 V1 发布依据。普通 CI MAY 验证源码、测试及发布所依赖的平台行为，但 SHALL NOT 作为公开发布 binary 或 ZIP 的来源。
 
 #### Scenario: 三平台原生构建
 - **WHEN** release workflow 为 V1 版本运行
@@ -37,8 +37,12 @@
 - **WHEN** 构建 Linux 或 macOS release 包
 - **THEN** ZIP 中存在同名顶层目录及两个保留可执行权限的 binary、README 和 MIT LICENSE，用户解压并把目录加入 `PATH` 后可运行两个命令
 
+#### Scenario: macOS portable package 自包含创建 bundle
+- **WHEN** 用户只解压 macOS ZIP 中规定的两个正式 binary、README 和 LICENSE，并从该目录运行 `git pin`
+- **THEN** `git-pin` 可创建带有效可执行启动入口的 `.app` bundle，不依赖 ZIP 外部或未包含在发布包中的辅助 executable
+
 ### Requirement: 发布包命名与版本一致性
-发布包 SHALL 使用 `git-pin-v<semver>-<platform>-<architecture>.zip` 命名，其中 platform 为 `windows`、`linux` 或 `macos`，architecture 使用仓库声明的稳定标识。Git tag、crate 版本、包名和包内文档声明的版本 MUST 一致；不一致时 release SHALL 在发布前失败。
+发布包 SHALL 使用 `git-pin-v<semver>-<platform>-<architecture>.zip` 命名，其中 platform 为 `windows`、`linux` 或 `macos`，architecture 使用仓库声明的稳定标识。`Cargo.toml` 的 `[package].version` SHALL 是唯一项目版本源；Git tag MUST 与该版本加 `v` 前缀后的值一致，包名和顶层目录名 SHALL 由该版本派生。README 及其他包内文档 SHALL NOT 作为机器可读版本源，也 SHALL NOT 参与构建版本校验。tag、Cargo package version 或派生包名不一致时 release SHALL 在发布前失败。
 
 #### Scenario: 正常版本发布
 - **WHEN** tag `v1.2.3` 触发 Windows x86_64 打包
@@ -47,6 +51,10 @@
 #### Scenario: 版本不一致
 - **WHEN** release tag 与项目元数据版本不一致
 - **THEN** workflow 在创建公开 Release 或上传最终资产前失败并报告不一致值
+
+#### Scenario: README 不声明版本
+- **WHEN** README 不包含当前版本文本，或其说明性文本未随 package version 变化
+- **THEN** release 仍仅根据 `Cargo.toml` 的 `[package].version` 校验 tag 并派生包名，不解析 README 获取版本
 
 ### Requirement: MIT 许可与上游合规扫描
 项目 V1 SHALL 最终以 MIT License 分发。在最终 release 打包前，CI MUST 扫描直接和传递 Rust dependencies 的许可证与已知安全公告，并 SHALL 阻止许可证与 MIT 分发目标不兼容、许可证元数据未知且未被明确审核，或命中按仓库策略禁止的安全公告的依赖进入公开包。早期实现提交可以先建立功能，但公开 V1 Release MUST 等待该合规门禁通过。

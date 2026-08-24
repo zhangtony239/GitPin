@@ -71,13 +71,15 @@ VS Code 解析按确定顺序尝试可验证候选：`code`/`code.cmd` 对应安
 
 替代方案是调用 `code <path>` 的 shell 脚本，文件更简单但扩大注入面并增加额外受管文件，因此不采用。
 
-### 7. macOS 使用最小原生 `.app` bundle 与 `open -a`
+### 7. macOS 使用自包含的最小原生 `.app` bundle 与 `open -a`
 
-每个 repository 生成 `~/Applications/Git Pin/<name>.app`，包含 `Contents/Info.plist`、`Contents/MacOS/git-pin-launcher` 与资源。Launcher 是随发布构建的当前架构辅助 binary（可由主 crate 增加内部 binary target），repository root 存入 plist 自有 key；辅助 binary 从所属 bundle 的 plist 读取 root，以参数数组调用 `/usr/bin/open -a "Visual Studio Code" --args <root>`。不通过 shell，不把路径嵌入脚本文本。
+每个 repository 生成 `~/Applications/Git Pin/<name>.app`，包含 `Contents/Info.plist` 与 `Contents/MacOS/git-pin-launcher`。macOS 发布包仍只包含 `git-pin` 和 `git-unpin` 两个正式 binary；创建 bundle 时，`git-pin` 将当前 executable 复制为 bundle 内部启动入口，不要求发布目录相邻存在或 ZIP 额外携带第三个辅助 binary。该 executable 根据自身处于受管 `.app/Contents/MacOS` 的执行上下文进入内部 launcher 路径，否则保持正常 `git pin [path]` 命令行为；`git unpin [path|name]` 及 Git 外部命令分派契约不变。
+
+Repository root 存入 plist 自有 key；bundle 内部启动路径从所属 bundle 的 plist 读取 root，以参数数组调用 `/usr/bin/open -a "Visual Studio Code" --args <root>`。双入口判定必须同时验证预期 bundle 目录结构与受管 metadata，不得只按用户可控的 executable 文件名切换；不通过 shell，不把路径嵌入脚本文本。
 
 Bundle identifier 使用反向域名前缀加 repository name 的稳定哈希，避免不同名称编码造成冲突；显示名称仍保留 basename。Info.plist 使用标准序列化库或受控 XML writer 生成，不做字符串模板替换。创建后可 best-effort 触发 Launch Services 注册，但 `.app` 有效性不依赖刷新成功。
 
-采用 `.app` 而非 alias/Automator，前者是 Finder、Spotlight 和 Launch Services 的标准用户应用单元，可完全由项目生成。直接复制 shell script 到 Applications 不能提供等价应用体验。
+采用 `.app` 而非 alias/Automator，前者是 Finder、Spotlight 和 Launch Services 的标准用户应用单元，可完全由项目生成。让 `git-pin` 自复制并复用同一机器码，比发布第三个相邻 binary 更符合仅含两个正式命令的 portable ZIP 契约；编译期嵌入另一份 executable 会增加构建耦合和包体，直接复制 shell script 则会扩大注入面并依赖脚本 runtime，均不采用。
 
 ### 8. 依赖保持最小并在 target scope 声明
 
@@ -91,15 +93,18 @@ Bundle identifier 使用反向域名前缀加 repository name 的稳定哈希，
 - 使用临时目录和 fake backend 的应用测试：幂等、冲突、unpin 路径/名称分派、失败不留半成品；
 - 使用临时 Git repository 的 process integration test：root discovery、子目录和 worktree；
 - 平台 runner integration test：在隔离的临时 launcher root（backend 测试注入）创建、inspect、删除原生格式，避免污染 runner 用户真实菜单；
+- macOS 自包含集成测试：从只含 `git-pin`/`git-unpin` 的模拟发布目录运行正式命令，验证 `git-pin` 自复制形成 bundle 入口、内部路径读取准确 root，并保持两个公开 Git 子指令行为不变；
 - packaging test：解压 ZIP，验证目录、文件名、权限、版本和 checksum。
 
 平台路径允许由测试专用依赖注入覆盖，但 production constructor 始终使用规范系统目录。这样既验证真实原生格式，又避免在 CI 用户环境留下入口。
 
-### 10. CI 分为快速门禁、平台验证、release 三层
+### 10. CI 分为快速门禁、平台验证、macOS 自包含验证和 release 四层
 
 每次 PR 先执行格式与通用测试，再以原生 OS matrix 执行 clippy、完整测试和 release build。任务实现按依赖顺序小步提交，每个提交都推送 CI；后续步骤只基于绿色提交扩展。
 
-Release 由 `v*` tag 触发，校验 tag 与 Cargo version，一次构建两个主 binary（macOS 另带内部 launcher）、按 OS/arch staging、复制 README/LICENSE、压缩、复验、计算 SHA-256。matrix 全部成功并通过 dependency license/advisory gate 后，单独 publish job 下载所有 artifact 并创建 Release，避免部分发布。
+macOS 自包含验证使用独立 CI job，在 macOS runner 上从只暂存两个正式 binary 的目录执行真实 `git pin` 流程，验证无需第三个相邻 executable 即可创建、inspect、启动和删除 `.app`。该阶段独立于通用 OS matrix，确保 macOS 重构的发布前提在进入统一 ZIP 打包前具有明确门禁和可诊断结果。
+
+公开发布产物仅由 `.github/workflows/release.yml` 构建。该 workflow 由 `v*` tag 触发，从 `Cargo.toml` 的 `[package].version` 读取唯一项目版本并校验 tag 等于 `v<version>`；README 仅作为包内说明文件复制，不作为版本源或校验输入。各原生 OS/arch job 分别执行 release build、按派生版本 staging 两个正式 binary、复制 README/LICENSE、压缩、解压复验并计算 SHA-256；普通 CI artifact 不得被提升为公开发布资产。matrix 全部成功并通过 dependency license/advisory gate 后，单独 publish job 下载所有已验证 artifact 并创建 Release，避免部分发布。
 
 架构支持以 GitHub-hosted runner 和 Rust target 的实际可用性为准：首轮实现先建立三个原生 OS 的 x86_64/runner-native 产物，再逐项启用可在对应 OS 原生 runner 可靠构建和测试的 arm64。未通过验证的组合不进入公开矩阵。
 
@@ -109,6 +114,7 @@ Release 由 `v*` tag 触发，校验 tag 与 Cargo version，一次构建两个�
 - [macOS 未签名 bundle 可能出现安全提示，且 Spotlight 索引存在延迟] → bundle 仅包装本地用户主动安装的同一发布 binary，不下载执行内容；记录限制，V1 验收 Finder 可启动和 bundle 可索引，不承诺即时出现。后续可独立引入签名/notarization。
 - [VS Code 安装发现因渠道版、Insiders 或用户自定义位置而失败] → V1 只支持稳定版可验证候选并给出明确错误；不静默写无效入口。渠道选择以后通过显式 CLI/config 提案扩展。
 - [没有独立 registry 使外部手工编辑 launcher 后 inspect 失败] → 将格式版本和 root 写入平台产物，严格验证；损坏时报告修复建议而不猜测或覆盖。
+- [macOS 同一 executable 同时承担公开命令与 bundle 内部入口，错误分派可能改变 `git pin` 行为或读取非受管路径] → 仅在 executable 位于预期 `.app/Contents/MacOS` 结构且所属 plist 通过受管格式版本与绝对 root 校验时进入 launcher 路径；其余执行一律保持公开 CLI 分派，并由独立 macOS process test 覆盖。
 - [unpin 单个参数既可能是路径也可能是名称] → 明确定义“现存路径优先，否则精确名称”；仓库已删除时仍可按 basename 清理。
 - [无本地编译链会拉长反馈周期] → 小步提交、先快后全的 CI job、依赖缓存和并行 OS matrix；不以跳过检查换取速度。
 - [三平台首个变更范围较大] → 先完成可 fake 的 core contract，再按 Linux、Windows、macOS 独立 backend 递增；每个 backend 具有独立 CI 里程碑，最后再合并 release gate。
@@ -119,8 +125,9 @@ Release 由 `v*` tag 触发，校验 tag 与 Cargo version，一次构建两个�
 1. 初始化 MIT 许可的 Rust package、两个空薄 binary 和基础 CI；此时不发布版本。
 2. 以 fake backend 完成 core/repository contract 和通用测试，持续保持 CI 绿色。
 3. 依次加入 Linux、Windows、macOS backend 与各自 runner integration tests；未完成平台不标记支持。
-4. 加入 README 和 portable packaging，CI 生成非公开 workflow artifacts 供检查。
-5. 扫描全部上游依赖许可证与 advisories，修复或替换不满足策略的 dependency。
-6. 启用 tag release；只有三平台必需矩阵和所有门禁均通过才公开 V1 资产。
+4. 重构 macOS bundle 入口为 `git-pin` 自包含模式，并以独立 macOS CI job 验证仅有两个正式 binary 时完整 pin/unpin 与 bundle 启动行为。
+5. 加入 README，并在 `.github/workflows/release.yml` 实现以 `Cargo.toml` 为唯一版本源的三平台构建、portable ZIP、复验与 checksum；发布前可通过非公开触发方式检查 workflow artifacts。
+6. 扫描全部上游依赖许可证与 advisories，修复或替换不满足策略的 dependency。
+7. 启用 tag release；只有三平台必需矩阵和所有门禁均通过才公开 V1 资产。
 
 在首次公开版本前无需数据迁移。若任一阶段失败，回滚到最后一个绿色小步提交；release publish job 之前的失败不会产生部分公开版本。已经生成的测试 launcher 由测试 teardown 删除，必要时可按工具专属目录/前缀安全清理。
