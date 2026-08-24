@@ -61,4 +61,4 @@
 - [x] 9.4 在每个 release matrix job 中解压 ZIP，校验精确内容、派生目录名和版本、Unix 权限及 binary 可运行性，并为每个通过复验的 ZIP 生成 SHA-256 摘要
 - [x] 9.5 首先落实三个原生 OS 的 runner-native/x86_64 发布组合，再逐项验证可用的 arm64 原生平台构建；无法可靠构建和测试的组合明确不加入 V1 支持矩阵
 - [x] 9.6 添加独立 publish job，仅汇总本次 `release.yml` 生成且已经 build/test/compliance/package/checksum 全部通过的 assets，并原子式创建 GitHub Release；任一必需矩阵或门禁失败均不得发布部分版本
-- [ ] 9.7 以非公开 dry run 验证完整 release 流程与失败路径，复核 ZIP、SHA-256、MIT LICENSE、三平台安装说明和无管理员权限要求后，才允许创建首个公开 V1 tag
+- [x] 9.7 以非公开 dry run 验证完整 release 流程与失败路径，复核 ZIP、SHA-256、MIT LICENSE、三平台安装说明和无管理员权限要求后，才允许创建首个公开 V1 tag
