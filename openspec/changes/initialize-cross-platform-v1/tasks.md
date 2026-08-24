@@ -30,13 +30,13 @@
 - [x] 5.1 在 Windows target scope 添加最小 `windows` crate features，实现 COM 初始化/释放和稳定版 Visual Studio Code GUI executable 候选解析
 - [x] 5.2 使用 `IShellLinkW` 与 `IPersistFile` 实现 `.lnk` 的 target、单参数 arguments、working directory、icon 和受管 root 读回
 - [x] 5.3 实现 `%APPDATA%` 启动器目录、宽字符串路径、Windows 路径比较、临时 `.lnk` 原子提交与验证后删除
-- [ ] 5.4 在 Windows CI 的隔离 launcher root 上集成测试真实 Shell Link 创建/inspect/unpin、同名冲突及空格/非 ASCII 路径，并推送确认矩阵绿色
+- [x] 5.4 在 Windows CI 的隔离 launcher root 上集成测试真实 Shell Link 创建/inspect/unpin、同名冲突及空格/非 ASCII 路径，并推送确认矩阵绿色
 
 ## 6. macOS Application Bundle Backend
 
-- [ ] 6.1 实现 `~/Applications/Git Pin` 目录、稳定哈希 bundle identifier、受控 `Info.plist` 序列化及受管 root/格式版本 metadata
-- [ ] 6.2 实现内部 `git-pin-launcher` 从所属 bundle 读取 root，并以参数数组调用 `/usr/bin/open -a "Visual Studio Code" --args <root>`，禁止 shell 插值
-- [ ] 6.3 实现临时 `.app` 目录组装、当前架构 launcher 安装与权限、bundle inspect、原子 rename、安全删除及 Launch Services best-effort 注册
+- [x] 6.1 实现 `~/Applications/Git Pin` 目录、稳定哈希 bundle identifier、受控 `Info.plist` 序列化及受管 root/格式版本 metadata
+- [x] 6.2 实现内部 `git-pin-launcher` 从所属 bundle 读取 root，并以参数数组调用 `/usr/bin/open -a "Visual Studio Code" --args <root>`，禁止 shell 插值
+- [x] 6.3 实现临时 `.app` 目录组装、当前架构 launcher 安装与权限、bundle inspect、原子 rename、安全删除及 Launch Services best-effort 注册
 - [ ] 6.4 在 macOS CI 的隔离 Applications root 上集成测试 bundle 结构、plist、launcher 调用参数、冲突、unpin 及特殊字符路径，并推送确认矩阵绿色
 
 ## 7. 端到端行为与文档
