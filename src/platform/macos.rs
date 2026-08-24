@@ -195,7 +195,10 @@ fn xml_unescape(value: &str) -> Option<String> {
 fn plist_string(plist: &str, key: &str) -> Option<String> {
     let key_markup = format!("<key>{key}</key>");
     let after_key = plist.split_once(&key_markup)?.1.trim_start();
-    let value = after_key.strip_prefix("<string>")?.split_once("</string>")?.0;
+    let value = after_key
+        .strip_prefix("<string>")?
+        .split_once("</string>")?
+        .0;
     xml_unescape(value)
 }
 
@@ -238,11 +241,7 @@ impl LauncherBackend for MacOsBackend {
         self.inspect_path(name, path)
     }
 
-    fn create(
-        &self,
-        repository: &Repository,
-        _vscode: &Path,
-    ) -> Result<CreateOutcome, AppError> {
+    fn create(&self, repository: &Repository, _vscode: &Path) -> Result<CreateOutcome, AppError> {
         let launcher_metadata = fs::metadata(&self.launcher_binary).map_err(|error| {
             AppError::failure(format!(
                 "could not access current-architecture macOS launcher '{}': {error}",
@@ -434,7 +433,10 @@ mod tests {
             PathBuf::from("/tmp/git-pin-launcher"),
             PathBuf::from("/tmp/Visual Studio Code.app"),
         );
-        assert_eq!(backend.launcher_root().as_path(), Path::new("/tmp/applications"));
+        assert_eq!(
+            backend.launcher_root().as_path(),
+            Path::new("/tmp/applications")
+        );
         assert_eq!(
             backend.bundle_path("project"),
             PathBuf::from("/tmp/applications/project.app")
@@ -477,7 +479,10 @@ mod tests {
         );
 
         let managed = match backend
-            .create(&repository, Path::new("/Applications/Visual Studio Code.app"))
+            .create(
+                &repository,
+                Path::new("/Applications/Visual Studio Code.app"),
+            )
             .expect("bundle creation must succeed")
         {
             CreateOutcome::Created(launcher) => launcher,
@@ -512,7 +517,9 @@ mod tests {
                 .to_string_lossy()
                 .ends_with(".tmp.app")));
 
-        backend.remove(&managed).expect("managed bundle must be removed");
+        backend
+            .remove(&managed)
+            .expect("managed bundle must be removed");
         assert!(!managed.path.exists());
     }
 
@@ -524,13 +531,15 @@ mod tests {
         let backend = test_backend(&temporary);
         let foreign = applications.join("project.app");
         fs::create_dir_all(&foreign).expect("foreign bundle must be created");
-        fs::write(foreign.join("foreign"), "preserve")
-            .expect("foreign marker must be created");
+        fs::write(foreign.join("foreign"), "preserve").expect("foreign marker must be created");
         let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
 
         assert_eq!(
             backend
-                .create(&repository, Path::new("/Applications/Visual Studio Code.app"))
+                .create(
+                    &repository,
+                    Path::new("/Applications/Visual Studio Code.app")
+                )
                 .expect("occupied slot must be reported"),
             CreateOutcome::Occupied(LauncherInspection::Foreign {
                 path: foreign.clone()
@@ -552,16 +561,16 @@ mod tests {
         let failing_registration = temporary.0.join("lsregister");
         fs::write(&failing_registration, "#!/bin/sh\nexit 9\n")
             .expect("registration fixture must be written");
-        fs::set_permissions(
-            &failing_registration,
-            fs::Permissions::from_mode(0o755),
-        )
-        .expect("registration fixture must be executable");
+        fs::set_permissions(&failing_registration, fs::Permissions::from_mode(0o755))
+            .expect("registration fixture must be executable");
         let backend = test_backend(&temporary).with_registration_command(failing_registration);
         let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
 
         let outcome = backend
-            .create(&repository, Path::new("/Applications/Visual Studio Code.app"))
+            .create(
+                &repository,
+                Path::new("/Applications/Visual Studio Code.app"),
+            )
             .expect("registration failure must not fail bundle creation");
         assert!(matches!(outcome, CreateOutcome::Created(_)));
         assert!(backend.bundle_path("project").is_dir());
@@ -589,8 +598,7 @@ mod tests {
             repository.root()
         );
         assert!(matches!(
-            pin(&backend, &repository, Platform::MacOs)
-                .expect("repeat pin must be idempotent"),
+            pin(&backend, &repository, Platform::MacOs).expect("repeat pin must be idempotent"),
             PinOutcome::AlreadyPinned(_)
         ));
 

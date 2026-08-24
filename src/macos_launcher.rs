@@ -37,9 +37,7 @@ pub fn run_with(current_executable: &Path, open_executable: &Path) -> Result<(),
     Ok(())
 }
 
-pub(crate) fn repository_root_for_launcher(
-    current_executable: &Path,
-) -> Result<PathBuf, String> {
+pub(crate) fn repository_root_for_launcher(current_executable: &Path) -> Result<PathBuf, String> {
     let macos_directory = current_executable.parent().ok_or_else(|| {
         format!(
             "macOS bundle launcher '{}' has no parent directory",
@@ -85,7 +83,10 @@ pub(crate) fn repository_root_for_launcher(
 fn plist_string(plist: &str, key: &str) -> Option<String> {
     let key_markup = format!("<key>{key}</key>");
     let after_key = plist.split_once(&key_markup)?.1.trim_start();
-    let value = after_key.strip_prefix("<string>")?.split_once("</string>")?.0;
+    let value = after_key
+        .strip_prefix("<string>")?
+        .split_once("</string>")?
+        .0;
     xml_unescape(value)
 }
 
@@ -177,7 +178,10 @@ mod tests {
         let fake_open = temporary.0.join("open");
         fs::write(
             &fake_open,
-            format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n", output.display()),
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+                output.display()
+            ),
         )
         .expect("fake open must be written");
         fs::set_permissions(&fake_open, fs::Permissions::from_mode(0o755))
