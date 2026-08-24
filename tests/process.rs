@@ -168,7 +168,9 @@ impl ProcessEnvironment {
                     .file_name()
                     .expect("launcher entry must have a name")
                     .to_string_lossy();
-                name.contains(".tmp") || name.ends_with(".lnk") || name.ends_with(".app")
+                name.contains(".tmp")
+                    || name.ends_with(".lnk")
+                    || name.ends_with(".app")
                     || name.ends_with(".desktop")
             })
             .collect();
@@ -223,12 +225,10 @@ fn git_external_dispatch_and_direct_binaries_cover_the_repository_lifecycle() {
     let nested = first.join("nested directory");
     fs::create_dir_all(&nested).expect("nested repository directory must be created");
 
-    let output = run(
-        environment
-            .command("git")
-            .current_dir(&nested)
-            .args(["pin"]),
-    );
+    let output = run(environment
+        .command("git")
+        .current_dir(&nested)
+        .args(["pin"]));
     assert_success(&output);
     let launcher = environment.launcher("shared-name");
     assert!(launcher.exists(), "native launcher must be created");
@@ -239,7 +239,10 @@ fn git_external_dispatch_and_direct_binaries_cover_the_repository_lifecycle() {
 
     let output = run(environment.command(git_pin()).arg(&second));
     assert_failure_with(&output, "already points to");
-    assert!(launcher.exists(), "conflict must preserve the original launcher");
+    assert!(
+        launcher.exists(),
+        "conflict must preserve the original launcher"
+    );
 
     let output = run(environment.command(git_unpin()).arg(&first));
     assert_success(&output);

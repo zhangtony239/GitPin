@@ -199,11 +199,8 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             Ok(())
         }
         Operation::Unpin => {
-            let target = resolve_unpin_target(
-                invocation.argument.as_deref(),
-                &current_directory,
-                platform,
-            )?;
+            let target =
+                resolve_unpin_target(invocation.argument.as_deref(), &current_directory, platform)?;
             match unpin(&backend, &target, platform)? {
                 UnpinOutcome::Removed(launcher) => {
                     println!("unpinned '{}'", launcher.name)
