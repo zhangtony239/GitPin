@@ -292,6 +292,7 @@ jobs:
         if: needs.metadata.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: gh release create "$RELEASE_TAG" assets/* --draft --verify-tag --title "Git Pin $RELEASE_TAG" --generate-notes
 
@@ -299,6 +300,7 @@ jobs:
         if: needs.metadata.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: gh release edit "$RELEASE_TAG" --draft=false
 
