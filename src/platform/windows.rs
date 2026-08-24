@@ -162,7 +162,11 @@ fn resolve_gui_executable(candidate: &Path) -> Option<PathBuf> {
         let gui = installation.join("Code.exe");
         return gui.is_file().then_some(gui);
     }
-    fs::canonicalize(candidate).ok()
+    if candidate.is_absolute() {
+        Some(candidate.to_owned())
+    } else {
+        env::current_dir().ok().map(|directory| directory.join(candidate))
+    }
 }
 
 struct ShellLinkData {

@@ -82,7 +82,7 @@ impl ProcessEnvironment {
             .to_owned();
         let tools = root.0.join("tools");
         fs::create_dir_all(&tools).expect("tools directory must be created");
-        create_vscode_fixture(&tools);
+        create_vscode_fixture(&tools, &root.0);
         let path = env::join_paths(
             [binary_directory, tools]
                 .into_iter()
@@ -179,7 +179,7 @@ impl ProcessEnvironment {
 }
 
 #[cfg(target_os = "linux")]
-fn create_vscode_fixture(tools: &Path) {
+fn create_vscode_fixture(tools: &Path, _root: &Path) {
     use std::os::unix::fs::PermissionsExt;
 
     let code = tools.join("code");
@@ -189,17 +189,15 @@ fn create_vscode_fixture(tools: &Path) {
 }
 
 #[cfg(target_os = "windows")]
-fn create_vscode_fixture(tools: &Path) {
+fn create_vscode_fixture(tools: &Path, _root: &Path) {
     fs::copy(git_pin(), tools.join("code.exe"))
         .expect("a valid PE executable must be copied as the Code fixture");
 }
 
 #[cfg(target_os = "macos")]
-fn create_vscode_fixture(_tools: &Path) {
-    assert!(
-        Path::new("/Applications/Visual Studio Code.app").is_dir(),
-        "the native macOS runner must provide stable Visual Studio Code"
-    );
+fn create_vscode_fixture(_tools: &Path, root: &Path) {
+    fs::create_dir_all(root.join("home/Applications/Visual Studio Code.app"))
+        .expect("isolated user-level Visual Studio Code fixture must be created");
 }
 
 #[test]

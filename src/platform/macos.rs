@@ -22,7 +22,7 @@ pub struct MacOsBackend {
     root: LauncherRoot,
     launcher_binary: PathBuf,
     registration_command: PathBuf,
-    vscode_application: PathBuf,
+    vscode_applications: Vec<PathBuf>,
 }
 
 impl MacOsBackend {
@@ -60,7 +60,10 @@ impl MacOsBackend {
             registration_command: PathBuf::from(
                 "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
             ),
-            vscode_application: PathBuf::from("/Applications/Visual Studio Code.app"),
+            vscode_applications: vec![
+                home.join("Applications/Visual Studio Code.app"),
+                PathBuf::from("/Applications/Visual Studio Code.app"),
+            ],
         })
     }
 
@@ -70,7 +73,7 @@ impl MacOsBackend {
             root: LauncherRoot::for_test(root),
             launcher_binary,
             registration_command: PathBuf::from("git-pin-disabled-lsregister"),
-            vscode_application,
+            vscode_applications: vec![vscode_application],
         }
     }
 
@@ -240,13 +243,18 @@ impl LauncherBackend for MacOsBackend {
     }
 
     fn vscode_executable(&self) -> Result<PathBuf, AppError> {
-        self.vscode_application
-            .is_dir()
-            .then_some(self.vscode_application.clone())
+        self.vscode_applications
+            .iter()
+            .find(|application| application.is_dir())
+            .cloned()
             .ok_or_else(|| {
                 AppError::failure(format!(
-                    "could not find stable Visual Studio Code at '{}'",
-                    self.vscode_application.display()
+                    "could not find stable Visual Studio Code in any standard location: {}",
+                    self.vscode_applications
+                        .iter()
+                        .map(|path| format!("'{}'", path.display()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ))
             })
     }
