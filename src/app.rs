@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::cli::{Invocation, Operation};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
+use crate::platform::NativeBackend;
 use crate::repo::{launcher_name, paths_equivalent, Platform, Repository};
 
 /// Successful states returned by pin orchestration.
@@ -169,9 +170,48 @@ pub fn unpin<B: LauncherBackend>(
 
 /// Runs one of the public commands.
 pub fn run(invocation: Invocation) -> Result<(), AppError> {
+    let current_directory = std::env::current_dir().map_err(|error| {
+        AppError::failure(format!("could not determine current directory: {error}"))
+    })?;
+    let platform = Platform::current();
+    let backend = NativeBackend::new()?;
+
     match invocation.operation {
-        Operation::Pin => Err(AppError::not_implemented("git pin")),
-        Operation::Unpin => Err(AppError::not_implemented("git unpin")),
+        Operation::Pin => {
+            let input = invocation
+                .argument
+                .as_deref()
+                .map(Path::new)
+                .unwrap_or(&current_directory);
+            let repository = Repository::discover(input, platform)?;
+            match pin(&backend, &repository, platform)? {
+                PinOutcome::Created(launcher) => println!(
+                    "pinned '{}' at '{}'",
+                    repository.root().display(),
+                    launcher.path.display()
+                ),
+                PinOutcome::AlreadyPinned(launcher) => println!(
+                    "already pinned '{}' at '{}'",
+                    repository.root().display(),
+                    launcher.path.display()
+                ),
+            }
+            Ok(())
+        }
+        Operation::Unpin => {
+            let target = resolve_unpin_target(
+                invocation.argument.as_deref(),
+                &current_directory,
+                platform,
+            )?;
+            match unpin(&backend, &target, platform)? {
+                UnpinOutcome::Removed(launcher) => {
+                    println!("unpinned '{}'", launcher.name)
+                }
+                UnpinOutcome::AlreadyAbsent => println!("already unpinned"),
+            }
+            Ok(())
+        }
     }
 }
 

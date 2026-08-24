@@ -37,13 +37,13 @@
 - [x] 6.1 实现 `~/Applications/Git Pin` 目录、稳定哈希 bundle identifier、受控 `Info.plist` 序列化及受管 root/格式版本 metadata
 - [x] 6.2 实现内部 `git-pin-launcher` 从所属 bundle 读取 root，并以参数数组调用 `/usr/bin/open -a "Visual Studio Code" --args <root>`，禁止 shell 插值
 - [x] 6.3 实现临时 `.app` 目录组装、当前架构 launcher 安装与权限、bundle inspect、原子 rename、安全删除及 Launch Services best-effort 注册
-- [ ] 6.4 在 macOS CI 的隔离 Applications root 上集成测试 bundle 结构、plist、launcher 调用参数、冲突、unpin 及特殊字符路径，并推送确认矩阵绿色
+- [x] 6.4 在 macOS CI 的隔离 Applications root 上集成测试 bundle 结构、plist、launcher 调用参数、冲突、unpin 及特殊字符路径，并推送确认矩阵绿色
 
 ## 7. 端到端行为与文档
 
-- [ ] 7.1 为两个正式 binary 添加 process-level 测试，验证 Git 外部命令分派、当前目录/路径/name 输入、幂等、冲突、错误上下文和退出状态
-- [ ] 7.2 在各原生 CI runner 运行隔离端到端 smoke test：创建临时 Git repository、pin、inspect 平台 launcher、重复 pin、unpin，并保证 teardown 无残留
-- [ ] 7.3 完成 README 的三平台前置条件、portable 安装、命令示例、入口位置、名称冲突、稳定版 VS Code 限制、macOS 未签名提示和 V1 非目标文档
+- [x] 7.1 为两个正式 binary 添加 process-level 测试，验证 Git 外部命令分派、当前目录/路径/name 输入、幂等、冲突、错误上下文和退出状态
+- [x] 7.2 在各原生 CI runner 运行隔离端到端 smoke test：创建临时 Git repository、pin、inspect 平台 launcher、重复 pin、unpin，并保证 teardown 无残留
+- [x] 7.3 完成 README 的三平台前置条件、portable 安装、命令示例、入口位置、名称冲突、稳定版 VS Code 限制、macOS 未签名提示和 V1 非目标文档
 - [ ] 7.4 推送端到端与文档小步，确认 fmt、clippy、全部测试和三平台 release build 均绿色
 
 ## 8. Portable Packaging

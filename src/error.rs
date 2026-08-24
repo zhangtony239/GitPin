@@ -19,13 +19,6 @@ pub enum ExitCode {
 }
 
 impl AppError {
-    pub(crate) fn not_implemented(operation: &str) -> Self {
-        Self {
-            message: format!("{operation} is not implemented yet"),
-            exit_code: ExitCode::Failure,
-        }
-    }
-
     pub(crate) fn usage(usage: &'static str) -> Self {
         Self {
             message: usage.to_owned(),
