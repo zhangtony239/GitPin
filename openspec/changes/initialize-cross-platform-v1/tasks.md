@@ -51,11 +51,11 @@
 - [x] 8.1 让 `git-pin` 仅在严格验证 executable 位于受管 `.app/Contents/MacOS` 结构且所属 plist metadata 有效时进入内部 launcher 路径，其他执行保持公开 `git pin [path]` 语义，并保持 `git unpin [path|name]` 契约不变
 - [x] 8.2 重构 macOS backend，使创建 bundle 时将当前 `git-pin` executable 自复制为内部启动入口；删除对发布目录中相邻辅助 executable 的运行时依赖，以及不再需要的第三 binary target/feature
 - [x] 8.3 添加 macOS process/integration 测试，从只含 `git-pin` 与 `git-unpin` 的模拟发布目录验证 pin、bundle inspect、内部 root 读取与安全启动参数、unpin，以及两个公开 Git 子指令不发生行为漂移
-- [ ] 8.4 在普通 CI 中添加独立 macOS 自包含 job，使用 release build 的两个正式 binary 运行隔离 smoke test；推送并确认该门禁绿色后再实现统一 release workflow
+- [x] 8.4 在普通 CI 中添加独立 macOS 自包含 job，使用 release build 的两个正式 binary 运行隔离 smoke test；推送并确认该门禁绿色后再实现统一 release workflow
 
 ## 9. release.yml 统一构建、合规与公开 Release
 
-- [ ] 9.1 审阅完整直接/传递 dependency 清单，移除非必要依赖并记录每项上游许可证；配置固定版本的 Rust dependency 许可证和 advisory 扫描策略，使不兼容/未知未审核许可证及策略禁止的安全公告阻断 release，并保持项目最终许可证为 MIT
+- [x] 9.1 审阅完整直接/传递 dependency 清单，移除非必要依赖并记录每项上游许可证；配置固定版本的 Rust dependency 许可证和 advisory 扫描策略，使不兼容/未知未审核许可证及策略禁止的安全公告阻断 release，并保持项目最终许可证为 MIT
 - [ ] 9.2 创建 `.github/workflows/release.yml`，以 `v*` tag 触发并提供不创建公开 Release 的 dry-run 入口；从 `Cargo.toml` 的 `[package].version` 读取唯一项目版本、校验 tag 等于 `v<version>` 并派生包名，不解析 README 获取或校验版本
 - [ ] 9.3 在 release workflow 的 Windows、Linux、macOS 原生 job 中分别完成 release build、按 OS/architecture staging 和 ZIP 生成；Windows 包装两个 `.exe`，Linux/macOS 包装两个正式 binary，统一加入 README/MIT LICENSE、同名顶层目录并保留 Unix 可执行权限
 - [ ] 9.4 在每个 release matrix job 中解压 ZIP，校验精确内容、派生目录名和版本、Unix 权限及 binary 可运行性，并为每个通过复验的 ZIP 生成 SHA-256 摘要

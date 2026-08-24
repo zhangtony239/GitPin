@@ -1,0 +1,29 @@
+# Supply-chain policy for the complete Cargo.lock dependency graph.
+
+[advisories]
+# Every RustSec advisory category supported by cargo-deny 0.20.2 uses its
+# deny-by-default policy. Exceptions must be documented here with a reason;
+# V1 intentionally has none.
+ignore = []
+
+[licenses]
+# These are the only SPDX licenses present in the reviewed V1 dependency graph.
+# Unknown, unlicensed, copyleft, or otherwise unreviewed licenses are therefore
+# rejected implicitly.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2021"
 license = "MIT"
 description = "Pin Git repositories to the native desktop launcher"
-repository = "https://github.com/example/git-pin"
+repository = "https://github.com/zhangtony239/GitPin"
 
 [lib]
 name = "git_pin"

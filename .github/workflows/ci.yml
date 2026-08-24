@@ -14,6 +14,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  supply-chain:
+    name: Dependency licenses and advisories
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install fixed cargo-deny version
+        run: cargo install cargo-deny --version 0.20.2 --locked
+
+      - name: Check dependency licenses, advisories, bans, and sources
+        run: cargo deny check advisories licenses bans sources
+
   native:
     name: ${{ matrix.name }}
     strategy:
