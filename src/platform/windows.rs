@@ -108,7 +108,9 @@ impl WindowsBackend {
         };
         if shortcut.description != OsStr::new(FORMAT_DESCRIPTION)
             || !shortcut.target.is_absolute()
-            || !paths_equivalent(&shortcut.icon, &shortcut.target, Platform::Windows)
+            || !shortcut.icon.is_absolute()
+            || (shortcut.target.exists()
+                && !paths_equivalent(&shortcut.icon, &shortcut.target, Platform::Windows))
             || !shortcut.root.is_absolute()
             || shortcut.arguments != quote_single_argument(shortcut.root.as_os_str())
         {
