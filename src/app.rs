@@ -223,7 +223,8 @@ mod tests {
     use super::{pin, resolve_unpin_target, unpin, PinOutcome, UnpinOutcome, UnpinTarget};
     use crate::error::AppError;
     use crate::launcher::{
-        CreateOutcome, LauncherBackend, LauncherInspection, LauncherRoot, ManagedLauncher,
+        CreateOutcome, LauncherBackend, LauncherEnumerationItem, LauncherInspection, LauncherRoot,
+        ManagedLauncher,
     };
     use crate::repo::{Platform, Repository};
     use std::cell::{Cell, RefCell};
@@ -317,6 +318,13 @@ mod tests {
             } else {
                 Ok(self.inspection.borrow().clone())
             }
+        }
+
+        fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError> {
+            Ok(match self.inspection.borrow().clone() {
+                LauncherInspection::Managed(launcher) => vec![Ok(launcher)],
+                LauncherInspection::Missing | LauncherInspection::Foreign { .. } => Vec::new(),
+            })
         }
 
         fn create(

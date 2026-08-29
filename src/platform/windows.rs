@@ -15,7 +15,8 @@ use windows::Win32::UI::Shell::{IShellLinkW, ShellLink, SLGP_RAWPATH};
 
 use crate::error::AppError;
 use crate::launcher::{
-    CreateOutcome, LauncherBackend, LauncherInspection, LauncherRoot, ManagedLauncher,
+    CreateOutcome, LauncherBackend, LauncherEnumerationError, LauncherEnumerationItem,
+    LauncherInspection, LauncherRoot, ManagedLauncher,
 };
 use crate::repo::{paths_equivalent, Platform, Repository};
 
@@ -107,7 +108,6 @@ impl WindowsBackend {
         };
         if shortcut.description != OsStr::new(FORMAT_DESCRIPTION)
             || !shortcut.target.is_absolute()
-            || !shortcut.target.is_file()
             || !paths_equivalent(&shortcut.icon, &shortcut.target, Platform::Windows)
             || !shortcut.root.is_absolute()
             || shortcut.arguments != quote_single_argument(shortcut.root.as_os_str())
@@ -397,6 +397,62 @@ impl LauncherBackend for WindowsBackend {
         self.inspect_path(name, path)
     }
 
+    fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError> {
+        if !self.root.as_path().exists() {
+            return Ok(Vec::new());
+        }
+        let entries = fs::read_dir(self.root.as_path()).map_err(|error| {
+            AppError::failure(format!(
+                "could not enumerate Windows launchers in '{}': {error}",
+                self.root.as_path().display()
+            ))
+        })?;
+        let _apartment = ComApartment::initialize()?;
+        let mut launchers = Vec::new();
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    launchers.push(Err(LauncherEnumerationError::from_io(
+                        self.root.as_path().to_owned(),
+                        "could not read directory entry",
+                        error,
+                    )));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            if !path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case(OsStr::new("lnk")))
+            {
+                continue;
+            }
+            let Some(name) = path.file_stem().and_then(OsStr::to_str) else {
+                continue;
+            };
+            match self.inspect_path(name, path.clone()) {
+                Ok(LauncherInspection::Managed(launcher)) => launchers.push(Ok(launcher)),
+                Ok(LauncherInspection::Missing | LauncherInspection::Foreign { .. }) => {
+                    if read_shell_link(&path)
+                        .map(|link| link.description == OsStr::new(FORMAT_DESCRIPTION))
+                        .unwrap_or(false)
+                    {
+                        launchers.push(Err(LauncherEnumerationError::new(
+                            path,
+                            "Git Pin Windows Shell Link metadata is invalid",
+                        )));
+                    }
+                }
+                Err(error) => launchers.push(Err(LauncherEnumerationError::new(
+                    path,
+                    format!("could not inspect Windows Shell Link: {error}"),
+                ))),
+            }
+        }
+        Ok(launchers)
+    }
+
     fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError> {
         let _apartment = ComApartment::initialize()?;
         fs::create_dir_all(self.root.as_path()).map_err(|error| {
@@ -640,6 +696,28 @@ mod tests {
             .remove(&launcher)
             .expect("managed removal must succeed");
         assert!(!launcher.path.exists());
+    }
+
+    #[test]
+    fn enumeration_matches_inspection_ignores_foreign_and_tolerates_missing_code() {
+        let temporary = TempDir::new();
+        let code = temporary.0.join("Code.exe");
+        fs::write(&code, "fixture").expect("Code fixture must be created");
+        let launcher_root = temporary.0.join("launchers");
+        let backend = WindowsBackend::for_test(launcher_root.clone(), code.clone());
+        let repository = Repository::fixture(temporary.0.join("project"), "project");
+        assert!(backend.enumerate().expect("missing root is empty").is_empty());
+        let launcher = match backend.create(&repository, &code).unwrap() {
+            CreateOutcome::Created(launcher) => launcher,
+            CreateOutcome::Occupied(_) => panic!("fixture must be empty"),
+        };
+        fs::write(launcher_root.join("foreign.lnk"), "foreign").unwrap();
+        fs::remove_file(&code).unwrap();
+
+        let enumerated = backend.enumerate().unwrap();
+        assert_eq!(enumerated.len(), 1);
+        assert_eq!(enumerated.into_iter().next().unwrap().unwrap(), launcher);
+        assert!(matches!(backend.inspect("project").unwrap(), LauncherInspection::Managed(_)));
     }
 
     #[test]

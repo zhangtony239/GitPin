@@ -1,6 +1,7 @@
 //! Platform-independent launcher contracts.
 
 use std::path::{Path, PathBuf};
+use std::{fmt, io};
 
 use crate::error::AppError;
 use crate::repo::Repository;
@@ -34,6 +35,35 @@ pub struct ManagedLauncher {
     pub path: PathBuf,
 }
 
+/// Failure to parse one launcher candidate while continuing enumeration.
+#[derive(Debug)]
+pub struct LauncherEnumerationError {
+    pub path: PathBuf,
+    detail: String,
+}
+
+impl LauncherEnumerationError {
+    pub fn new(path: PathBuf, detail: impl Into<String>) -> Self {
+        Self {
+            path,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn from_io(path: PathBuf, action: &str, error: io::Error) -> Self {
+        Self::new(path, format!("{action}: {error}"))
+    }
+}
+
+impl fmt::Display for LauncherEnumerationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "launcher candidate '{}': {}", self.path.display(), self.detail)
+    }
+}
+
+/// One independently parsed entry from a platform launcher directory.
+pub type LauncherEnumerationItem = Result<ManagedLauncher, LauncherEnumerationError>;
+
 /// Result of inspecting the platform location for a repository name.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LauncherInspection {
@@ -59,6 +89,9 @@ pub trait LauncherBackend {
 
     /// Inspects the exact launcher slot associated with `name`.
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError>;
+
+    /// Enumerates managed launchers, preserving per-candidate parsing failures.
+    fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError>;
 
     /// Creates and atomically commits a launcher into a previously missing slot.
     fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError>;

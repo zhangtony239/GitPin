@@ -9,7 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::AppError;
 use crate::launcher::{
-    CreateOutcome, LauncherBackend, LauncherInspection, LauncherRoot, ManagedLauncher,
+    CreateOutcome, LauncherBackend, LauncherEnumerationError, LauncherEnumerationItem,
+    LauncherInspection, LauncherRoot, ManagedLauncher,
 };
 use crate::repo::Repository;
 
@@ -86,6 +87,15 @@ impl LinuxBackend {
             })),
             None => Ok(LauncherInspection::Foreign { path }),
         }
+    }
+
+    fn candidate_name(path: &Path) -> Option<String> {
+        let file_name = path.file_name()?.to_str()?;
+        file_name
+            .strip_prefix(FILE_PREFIX)?
+            .strip_suffix(FILE_SUFFIX)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
     }
 
     fn refresh(&self) -> Option<String> {
@@ -309,6 +319,55 @@ impl LauncherBackend for LinuxBackend {
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError> {
         let path = self.launcher_path(name);
         self.inspect_path(name, path)
+    }
+
+    fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError> {
+        if !self.root.as_path().exists() {
+            return Ok(Vec::new());
+        }
+        let entries = fs::read_dir(self.root.as_path()).map_err(|error| {
+            AppError::failure(format!(
+                "could not enumerate Linux launchers in '{}': {error}",
+                self.root.as_path().display()
+            ))
+        })?;
+        let mut launchers = Vec::new();
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    launchers.push(Err(LauncherEnumerationError::from_io(
+                        self.root.as_path().to_owned(),
+                        "could not read directory entry",
+                        error,
+                    )));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            let Some(name) = Self::candidate_name(&path) else {
+                continue;
+            };
+            match self.inspect_path(&name, path.clone()) {
+                Ok(LauncherInspection::Managed(launcher)) => launchers.push(Ok(launcher)),
+                Ok(LauncherInspection::Missing | LauncherInspection::Foreign { .. }) => {
+                    let has_managed_marker = fs::read_to_string(&path)
+                        .map(|content| content.contains(VERSION_KEY) || content.contains(ROOT_KEY))
+                        .unwrap_or(true);
+                    if has_managed_marker {
+                        launchers.push(Err(LauncherEnumerationError::new(
+                            path,
+                            "managed Linux desktop entry metadata is invalid",
+                        )));
+                    }
+                }
+                Err(error) => launchers.push(Err(LauncherEnumerationError::new(
+                    path,
+                    format!("could not inspect Linux desktop entry: {error}"),
+                ))),
+            }
+        }
+        Ok(launchers)
     }
 
     fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError> {
@@ -578,6 +637,38 @@ mod tests {
                 .expect("inspection must succeed"),
             LauncherInspection::Missing
         );
+    }
+
+    #[test]
+    fn enumeration_matches_inspection_reports_corrupt_managed_and_ignores_foreign_entries() {
+        let temporary = TempDir::new();
+        let code = temporary.0.join("code");
+        make_executable(&code);
+        let applications = temporary.0.join("applications");
+        let backend = LinuxBackend::for_test(applications.clone(), code.clone());
+        assert!(backend.enumerate().expect("missing root is empty").is_empty());
+        let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
+        let launcher = match backend.create(&repository, &code).unwrap() {
+            CreateOutcome::Created(launcher) => launcher,
+            CreateOutcome::Occupied(_) => panic!("fixture must be empty"),
+        };
+        fs::write(applications.join("unrelated.desktop"), "foreign").unwrap();
+        fs::write(
+            applications.join("git-pin-foreign.desktop"),
+            "[Desktop Entry]\nType=Application\n",
+        )
+        .unwrap();
+        fs::write(
+            applications.join("git-pin-corrupt.desktop"),
+            format!("[Desktop Entry]\n{VERSION_KEY}=broken\n{ROOT_KEY}=relative\n"),
+        )
+        .unwrap();
+
+        let enumerated = backend.enumerate().unwrap();
+        assert_eq!(enumerated.len(), 2);
+        assert!(enumerated.iter().any(|item| item.as_ref() == Ok(&launcher)));
+        assert!(enumerated.iter().any(Result::is_err));
+        assert_eq!(backend.inspect("project").unwrap(), LauncherInspection::Managed(launcher));
     }
 
     #[test]

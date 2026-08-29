@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::AppError;
 use crate::launcher::{
-    CreateOutcome, LauncherBackend, LauncherInspection, LauncherRoot, ManagedLauncher,
+    CreateOutcome, LauncherBackend, LauncherEnumerationError, LauncherEnumerationItem,
+    LauncherInspection, LauncherRoot, ManagedLauncher,
 };
 use crate::repo::Repository;
 
@@ -253,6 +254,59 @@ impl LauncherBackend for MacOsBackend {
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError> {
         let path = self.bundle_path(name);
         self.inspect_path(name, path)
+    }
+
+    fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError> {
+        if !self.root.as_path().exists() {
+            return Ok(Vec::new());
+        }
+        let entries = fs::read_dir(self.root.as_path()).map_err(|error| {
+            AppError::failure(format!(
+                "could not enumerate macOS launchers in '{}': {error}",
+                self.root.as_path().display()
+            ))
+        })?;
+        let mut launchers = Vec::new();
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    launchers.push(Err(LauncherEnumerationError::from_io(
+                        self.root.as_path().to_owned(),
+                        "could not read directory entry",
+                        error,
+                    )));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("app") {
+                continue;
+            }
+            let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            match self.inspect_path(name, path.clone()) {
+                Ok(LauncherInspection::Managed(launcher)) => launchers.push(Ok(launcher)),
+                Ok(LauncherInspection::Missing | LauncherInspection::Foreign { .. }) => {
+                    let plist = path.join("Contents/Info.plist");
+                    let has_managed_marker = fs::read_to_string(&plist)
+                        .map(|content| content.contains(VERSION_KEY) || content.contains(ROOT_KEY))
+                        .unwrap_or(false);
+                    if has_managed_marker {
+                        launchers.push(Err(LauncherEnumerationError::new(
+                            path,
+                            "Git Pin macOS bundle metadata is invalid",
+                        )));
+                    }
+                }
+                Err(error) => launchers.push(Err(LauncherEnumerationError::new(
+                    path,
+                    format!("could not inspect macOS bundle: {error}"),
+                ))),
+            }
+        }
+        Ok(launchers)
     }
 
     fn create(&self, repository: &Repository, _vscode: &Path) -> Result<CreateOutcome, AppError> {
@@ -539,6 +593,36 @@ mod tests {
             .remove(&managed)
             .expect("managed bundle must be removed");
         assert!(!managed.path.exists());
+    }
+
+    #[test]
+    fn enumeration_matches_inspection_reports_corrupt_managed_and_ignores_foreign_bundles() {
+        let temporary = TempDir::new();
+        let backend = test_backend(&temporary);
+        assert!(backend.enumerate().expect("missing root is empty").is_empty());
+        let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
+        let launcher = match backend
+            .create(&repository, Path::new("/Applications/Visual Studio Code.app"))
+            .unwrap()
+        {
+            CreateOutcome::Created(launcher) => launcher,
+            CreateOutcome::Occupied(_) => panic!("fixture must be empty"),
+        };
+        let foreign = backend.launcher_root().as_path().join("foreign.app");
+        fs::create_dir_all(&foreign).unwrap();
+        let corrupt = backend.launcher_root().as_path().join("corrupt.app/Contents");
+        fs::create_dir_all(&corrupt).unwrap();
+        fs::write(
+            corrupt.join("Info.plist"),
+            format!("<plist><key>{VERSION_KEY}</key><string>broken</string></plist>"),
+        )
+        .unwrap();
+
+        let enumerated = backend.enumerate().unwrap();
+        assert_eq!(enumerated.len(), 2);
+        assert!(enumerated.iter().any(|item| item.as_ref() == Ok(&launcher)));
+        assert!(enumerated.iter().any(Result::is_err));
+        assert_eq!(backend.inspect("project").unwrap(), LauncherInspection::Managed(launcher));
     }
 
     #[test]
