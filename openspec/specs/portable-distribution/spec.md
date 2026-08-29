@@ -2,20 +2,24 @@
 
 ## Purpose
 
-定义 `git-pin` 在无本地 Rust 编译链的开发模式下如何由持续集成验证，并为 Windows、Linux 与 macOS 生成可追溯、可直接加入 `PATH` 使用的便携发布包。
+定义 `git-pin` 如何在允许本地使用 Cargo 完成轻量开发任务的同时，由 GitHub Actions 独占执行受支持平台的构建矩阵与权威验证，并为 Windows、Linux 与 macOS 生成可追溯、可直接加入 `PATH` 使用的便携发布包。
 
 ## Requirements
 
 ### Requirement: CI 是 Rust 变更的权威验证环境
-每个影响 Rust 源码、构建配置、测试或打包流程的 pull request 和主分支提交 SHALL 由 GitHub Actions 执行格式检查、静态分析、测试和 release 构建。仓库 SHALL 不要求贡献者在本地安装 Rust toolchain；合并判定 SHALL 以受保护 CI 检查结果为准。
+开发环境 SHALL 允许贡献者在本地提供 Rust toolchain 与 Cargo，用于依赖及 package metadata 管理、`cargo check`、`cargo test` 等不生成发布产物的轻量开发任务。每个影响 Rust 源码、构建配置、测试或打包流程的 pull request 和主分支提交 SHALL 由 GitHub Actions 执行格式检查、静态分析、测试和受支持平台的 build matrix；该 build matrix（包括 release build）MUST 仅在 GitHub Actions runner 上执行，不得以本地构建结果替代。合并判定 SHALL 以受保护 CI 检查结果为准。
 
 #### Scenario: Pull request 验证
 - **WHEN** pull request 修改 Rust 源码或其构建、测试、打包配置
-- **THEN** CI 执行等价于 `cargo fmt --check`、拒绝 warning 的 `cargo clippy`、`cargo test` 和 `cargo build --release` 的检查，任一失败均使验证失败
+- **THEN** GitHub Actions 执行等价于 `cargo fmt --check`、拒绝 warning 的 `cargo clippy`、`cargo test` 和各受支持平台 `cargo build --release` 的检查，任一失败均使验证失败
 
-#### Scenario: 无本地 Rust 工具链贡献
-- **WHEN** 贡献者只编辑代码并推送分支而本机未安装 Rust
-- **THEN** 所有编译型验证均可在 GitHub Actions 完成，且仓库文档明确将 CI 结果作为合并前验证依据
+#### Scenario: 本地 Cargo 轻量开发
+- **WHEN** 贡献者在本地进行依赖或 package metadata 管理、运行 `cargo check`、`cargo test` 或同类轻量开发任务
+- **THEN** 本地 Cargo 可用于获得快速反馈，但不负责执行或替代任何受支持 operating-system/architecture 的 build matrix
+
+#### Scenario: 构建矩阵仅由 CI 执行
+- **WHEN** 变更需要验证 debug 或 release build 在受支持平台和架构上的可构建性
+- **THEN** 完整 build matrix 必须由 GitHub Actions 的对应 runner 执行，合并与发布均不得采信本地构建结果作为矩阵项
 
 ### Requirement: 原生平台矩阵构建
 系统 SHALL 由 `.github/workflows/release.yml` 在 Windows runner 构建 Windows 产物、Linux runner 构建 Linux 产物、macOS runner 构建 macOS 产物，并在同一 workflow 中完成发布暂存、ZIP 生成、包复验和 SHA-256 摘要生成。每个宣称支持的 operating-system/architecture 组合 MUST 由对应操作系统的原生 runner 构建或在该原生平台上使用受支持 target；不得把单一 Linux runner 的跨平台交叉编译作为 V1 发布依据。普通 CI MAY 验证源码、测试及发布所依赖的平台行为，但 SHALL NOT 作为公开发布 binary 或 ZIP 的来源。
