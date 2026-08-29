@@ -36,9 +36,8 @@ release gate on every advertised platform.
 2. Extract the ZIP. Its top-level directory contains `git-pin`, `git-unpin`,
    `README.md`, and `LICENSE` (`.exe` is present on both Windows binaries).
 3. Add that extracted top-level directory to the user `PATH`.
-4. Confirm Git can dispatch the external commands with `git pin --help`. V1
-   intentionally rejects options, so a usage message and exit status 2 confirm
-   dispatch is working.
+4. Confirm Git can dispatch the external commands with `git pin --help`. The
+   complete help is printed to standard output with exit status 0.
 
 The package is portable: it includes no installer, does not edit the registry,
 and does not modify `PATH` automatically.
@@ -65,6 +64,27 @@ When the repository no longer exists, remove its entry by exact basename:
 git unpin repository-name
 ```
 
+Inspect every Git Pin managed launcher, or remove all stale launchers:
+
+```text
+git pin --list
+git pin --prune
+```
+
+`--list` prints each repository name, its recorded root, and either `valid` or
+`invalid` with a reason. A root is valid only when it exists, is a directory,
+belongs to a Git working tree, and is that working tree's top-level root. List
+is read-only; an empty list is a successful, explicit result.
+
+`--prune` rechecks and removes only recognized Git Pin launchers whose recorded
+roots are missing, not directories, no longer Git working trees, or no longer
+match Git's top-level root. Valid launchers and unrecognized files or apps are
+preserved. Visual Studio Code being unavailable is neither an invalid status
+nor a prune condition. Repeating prune when no stale entries remain succeeds.
+If one entry cannot be read, checked, or removed, processing continues for the
+other entries and the command ultimately returns a non-zero status with all
+available diagnostics.
+
 Git determines the top-level working tree. The launcher's display name is the
 root directory basename and is not silently rewritten. Repeating `git pin` for
 the same root is successful and leaves one entry. If another root has the same
@@ -81,13 +101,15 @@ The launcher itself is the V1 registry. Git Pin reads platform-native metadata
 before replacing or deleting anything and refuses to remove unrecognized
 artifacts.
 
-## V1 scope
+## V1.1 scope
 
-V1 deliberately has only zero-or-one positional argument. It does not provide
-`--name`, `--list`, `--prune`, `--all`, configuration files, a separate metadata
-database, automatic installation, automatic updates, VS Code channel selection,
-or automatic `PATH` modification. It does not guarantee immediate refresh of
-every third-party desktop launcher cache.
+`git pin` accepts zero or one positional argument, or exactly one of `--help`,
+`-h`, `--list`, and `--prune`. `git unpin` accepts zero or one positional
+argument. V1.1 does not provide `--name`, `--all`, JSON/filter output,
+configuration files, a separate metadata database, automatic installation,
+automatic updates, VS Code channel selection, or automatic `PATH` modification.
+It does not guarantee immediate refresh of every third-party desktop launcher
+cache.
 
 ## Development
 

@@ -26,7 +26,7 @@ arm64 包不属于 V1 支持矩阵，因为其完整原生构建、测试、打�
 1. 从 GitHub Release 下载与操作系统匹配的 x86_64 ZIP。
 2. 解压 ZIP。其顶层目录包含 `git-pin`、`git-unpin`、`README.md` 和 `LICENSE`；Windows 上两个 binary 均带 `.exe` 后缀。
 3. 将解压后的顶层目录加入用户 `PATH`。
-4. 运行 `git pin --help`，确认 Git 可以分派外部命令。V1 会有意拒绝选项，因此出现 usage 信息并返回状态码 2 即表示分派正常。
+4. 运行 `git pin --help`，确认 Git 可以分派外部命令。完整帮助会写入标准输出并返回状态码 0。
 
 发布包是 portable 的：不包含安装器、不编辑 registry，也不会自动修改 `PATH`。
 
@@ -52,6 +52,17 @@ git unpin path/to/repository
 git unpin repository-name
 ```
 
+检查全部 Git Pin 受管启动器，或清理全部僵尸启动器：
+
+```text
+git pin --list
+git pin --prune
+```
+
+`--list` 输出每个 repository name、记录的 root，以及 `valid` 或带原因的 `invalid` 状态。只有 root 存在、是目录、属于 Git 工作树且正好是该工作树的顶层目录时才有效。list 是只读操作；空列表也是明确且成功的结果。
+
+`--prune` 会在删除前复检，并且只删除能够识别为 Git Pin 管理、且记录 root 已不存在、不是目录、不再是 Git 工作树或不再匹配 Git 顶层目录的启动器。有效启动器以及无法识别的外部文件或应用都会保留。Visual Studio Code 当前不可用既不会使 root 失效，也不会触发清理。没有僵尸项时重复运行 prune 仍会成功。若某一项无法读取、自检或删除，命令会继续处理其他项，最终通过非零状态和汇总诊断报告失败。
+
 Git Pin 以 Git 认定的顶层工作树为准。启动器显示名称取自根目录 basename，且不会被静默改写。对同一个 root 重复运行 `git pin` 会成功，并保持只有一个入口。如果另一个 root 具有相同 basename，Git Pin 会报告现有目标并拒绝覆盖。移除不存在的入口也会成功。
 
 ## 启动器位置
@@ -62,9 +73,9 @@ Git Pin 以 Git 认定的顶层工作树为准。启动器显示名称取自根�
 
 平台启动器本身就是 V1 registry。Git Pin 会在替换或删除任何内容之前读取平台原生 metadata，并拒绝删除无法识别的产物。
 
-## V1 范围
+## V1.1 范围
 
-V1 有意只接受零个或一个位置参数。它不提供 `--name`、`--list`、`--prune`、`--all`、配置文件、独立 metadata database、自动安装、自动更新、VS Code 渠道选择或自动修改 `PATH`。它也不保证每个第三方桌面启动器缓存都会立即刷新。
+`git pin` 接受零个或一个位置参数，或单独接受 `--help`、`-h`、`--list`、`--prune` 之一；`git unpin` 接受零个或一个位置参数。V1.1 不提供 `--name`、`--all`、JSON/过滤输出、配置文件、独立 metadata database、自动安装、自动更新、VS Code 渠道选择或自动修改 `PATH`。它也不保证每个第三方桌面启动器缓存都会立即刷新。
 
 ## 开发
 
