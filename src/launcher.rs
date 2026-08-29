@@ -36,7 +36,7 @@ pub struct ManagedLauncher {
 }
 
 /// Failure to parse one launcher candidate while continuing enumeration.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LauncherEnumerationError {
     pub path: PathBuf,
     detail: String,

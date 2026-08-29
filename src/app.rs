@@ -364,11 +364,13 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{pin, resolve_unpin_target, unpin, PinOutcome, UnpinOutcome, UnpinTarget};
+    use super::{
+        list, pin, prune, resolve_unpin_target, unpin, PinOutcome, UnpinOutcome, UnpinTarget,
+    };
     use crate::error::AppError;
     use crate::launcher::{
-        CreateOutcome, LauncherBackend, LauncherEnumerationItem, LauncherInspection, LauncherRoot,
-        ManagedLauncher,
+        CreateOutcome, LauncherBackend, LauncherEnumerationError, LauncherEnumerationItem,
+        LauncherInspection, LauncherRoot, ManagedLauncher,
     };
     use crate::repo::{Platform, Repository};
     use std::cell::{Cell, RefCell};
@@ -411,6 +413,9 @@ mod tests {
         fail_inspect: Cell<bool>,
         fail_create: Cell<bool>,
         fail_remove: Cell<bool>,
+        enumeration: RefCell<Option<Vec<LauncherEnumerationItem>>>,
+        fail_remove_names: RefCell<Vec<String>>,
+        removed: RefCell<Vec<String>>,
     }
 
     impl FakeBackend {
@@ -423,6 +428,9 @@ mod tests {
                 fail_inspect: Cell::new(false),
                 fail_create: Cell::new(false),
                 fail_remove: Cell::new(false),
+                enumeration: RefCell::new(None),
+                fail_remove_names: RefCell::new(Vec::new()),
+                removed: RefCell::new(Vec::new()),
             }
         }
 
@@ -440,6 +448,10 @@ mod tests {
 
         fn temp_path(&self, name: &str) -> PathBuf {
             self.root.as_path().join(format!(".{name}.tmp"))
+        }
+
+        fn set_enumeration(&self, items: Vec<LauncherEnumerationItem>) {
+            *self.enumeration.borrow_mut() = Some(items);
         }
     }
 
@@ -465,6 +477,9 @@ mod tests {
         }
 
         fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError> {
+            if let Some(items) = self.enumeration.borrow().as_ref() {
+                return Ok(items.clone());
+            }
             Ok(match self.inspection.borrow().clone() {
                 LauncherInspection::Managed(launcher) => vec![Ok(launcher)],
                 LauncherInspection::Missing | LauncherInspection::Foreign { .. } => Vec::new(),
@@ -499,7 +514,13 @@ mod tests {
         }
 
         fn remove(&self, launcher: &ManagedLauncher) -> Result<(), AppError> {
-            if self.fail_remove.get() {
+            if self.fail_remove.get()
+                || self
+                    .fail_remove_names
+                    .borrow()
+                    .iter()
+                    .any(|name| name == &launcher.name)
+            {
                 return Err(AppError::failure("fake remove failed"));
             }
             if launcher.path.exists() {
@@ -507,12 +528,24 @@ mod tests {
                     .map_err(|error| AppError::failure(error.to_string()))?;
             }
             self.set_inspection(LauncherInspection::Missing);
+            self.removed.borrow_mut().push(launcher.name.clone());
             Ok(())
         }
     }
 
     fn repository(root: &str) -> Repository {
         Repository::fixture(PathBuf::from(root), "project")
+    }
+
+    fn initialize_repository(path: &Path) {
+        fs::create_dir_all(path).unwrap();
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .arg("init")
+            .output()
+            .expect("Git must be available in CI");
+        assert!(output.status.success());
     }
 
     #[test]
@@ -675,5 +708,94 @@ mod tests {
         )
         .expect("missing path must be treated as an exact name");
         assert_eq!(by_name, UnpinTarget::Name("exact-project-name".to_owned()));
+    }
+
+
+    #[test]
+    fn list_scans_mixed_records_sorts_them_and_does_not_require_code() {
+        let temporary = TempDir::new();
+        let backend = FakeBackend::new(temporary.0.join("launchers"));
+        backend.fail_vscode.set(true);
+        let valid_root = temporary.0.join("valid");
+        initialize_repository(&valid_root);
+        let valid = backend.launcher("zeta", &valid_root);
+        let stale = backend.launcher("alpha", &temporary.0.join("deleted"));
+        backend.set_enumeration(vec![
+            Ok(valid.clone()),
+            Err(LauncherEnumerationError::new(
+                temporary.0.join("corrupt"),
+                "corrupt fixture",
+            )),
+            Ok(stale.clone()),
+        ]);
+
+        let report = list(&backend, Platform::current()).unwrap();
+        assert_eq!(
+            report
+                .records
+                .iter()
+                .map(|record| record.launcher.name.as_str())
+                .collect::<Vec<_>>(),
+            ["alpha", "zeta"]
+        );
+        assert!(matches!(report.records[0].status, crate::repo::RootStatus::Invalid(_)));
+        assert_eq!(report.records[1].status, crate::repo::RootStatus::Valid);
+        assert_eq!(report.errors.len(), 1);
+        assert!(backend.removed.borrow().is_empty(), "list must have no side effects");
+    }
+
+    #[test]
+    fn prune_removes_all_stale_entries_is_idempotent_and_preserves_valid_or_foreign_entries() {
+        let temporary = TempDir::new();
+        let backend = FakeBackend::new(temporary.0.join("launchers"));
+        let valid_root = temporary.0.join("valid");
+        initialize_repository(&valid_root);
+        let valid = backend.launcher("valid", &valid_root);
+        let stale_one = backend.launcher("stale-one", &temporary.0.join("missing-one"));
+        let stale_two = backend.launcher("stale-two", &temporary.0.join("missing-two"));
+        backend.set_enumeration(vec![
+            Ok(stale_two.clone()),
+            Ok(valid),
+            Ok(stale_one.clone()),
+        ]);
+
+        let report = prune(&backend, Platform::current()).unwrap();
+        assert_eq!(
+            report
+                .removed
+                .iter()
+                .map(|launcher| launcher.name.as_str())
+                .collect::<Vec<_>>(),
+            ["stale-one", "stale-two"]
+        );
+        assert!(report.errors.is_empty());
+
+        backend.set_enumeration(Vec::new());
+        let repeat = prune(&backend, Platform::current()).unwrap();
+        assert!(repeat.removed.is_empty());
+        assert!(repeat.errors.is_empty());
+    }
+
+    #[test]
+    fn prune_continues_after_enumeration_and_removal_failures() {
+        let temporary = TempDir::new();
+        let backend = FakeBackend::new(temporary.0.join("launchers"));
+        let failed = backend.launcher("failed", &temporary.0.join("missing-failed"));
+        let removed = backend.launcher("removed", &temporary.0.join("missing-removed"));
+        backend.fail_remove_names.borrow_mut().push("failed".to_owned());
+        backend.set_enumeration(vec![
+            Err(LauncherEnumerationError::new(
+                temporary.0.join("broken-candidate"),
+                "broken metadata",
+            )),
+            Ok(failed),
+            Ok(removed.clone()),
+        ]);
+
+        let report = prune(&backend, Platform::current()).unwrap();
+        assert_eq!(report.removed, vec![removed]);
+        assert_eq!(report.errors.len(), 2);
+        assert!(report.errors.iter().any(|error| error.contains("broken-candidate")));
+        assert!(report.errors.iter().any(|error| error.contains("failed")));
     }
 }

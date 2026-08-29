@@ -215,6 +215,53 @@ fn both_binaries_reject_options_and_extra_arguments_with_usage_exit_code() {
 }
 
 #[test]
+fn help_is_successful_complete_and_has_no_launcher_side_effects() {
+    let environment = ProcessEnvironment::new("help");
+    for argument in ["--help", "-h"] {
+        let output = run(environment.command(git_pin()).arg(argument));
+        assert_success(&output);
+        assert!(output.stderr.is_empty());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for expected in ["git pin [path]", "git pin --list", "git pin --prune"] {
+            assert!(stdout.contains(expected), "help omitted {expected:?}: {stdout}");
+        }
+    }
+    environment.assert_no_launcher_residue();
+}
+
+#[test]
+fn list_is_read_only_and_prune_is_diagnostic_and_idempotent() {
+    let environment = ProcessEnvironment::new("maintenance");
+    let repository = environment.root.0.join("repositories/stale-project");
+    initialize_repository(&repository);
+    assert_success(&run(environment.command(git_pin()).arg(&repository)));
+    let launcher = environment.launcher("stale-project");
+    assert!(launcher.exists());
+
+    let output = run(environment.command(git_pin()).arg("--list"));
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("stale-project"));
+    assert!(stdout.contains("valid"));
+    assert!(launcher.exists(), "list must not modify a launcher");
+
+    fs::remove_dir_all(&repository).expect("repository fixture must be deleted");
+    let output = run(environment.command(git_pin()).arg("--list"));
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("invalid"));
+    assert!(launcher.exists(), "invalid list item must remain until prune");
+
+    let output = run(environment.command(git_pin()).arg("--prune"));
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("pruned 'stale-project'"));
+    assert!(!launcher.exists());
+
+    let output = run(environment.command(git_pin()).arg("--prune"));
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("no stale pinned repositories"));
+}
+
+#[test]
 fn git_external_dispatch_and_direct_binaries_cover_the_repository_lifecycle() {
     let environment = ProcessEnvironment::new("lifecycle");
     let first = environment.root.0.join("first/shared-name");
