@@ -7,7 +7,9 @@ use crate::cli::{Invocation, PIN_HELP};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
-use crate::repo::{launcher_name, paths_equivalent, Platform, Repository};
+use crate::repo::{
+    check_root, launcher_name, paths_equivalent, Platform, Repository, RootStatus,
+};
 
 /// Successful states returned by pin orchestration.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,6 +30,53 @@ pub enum UnpinTarget {
 pub enum UnpinOutcome {
     Removed(ManagedLauncher),
     AlreadyAbsent,
+}
+
+/// One successfully parsed launcher and its repository-root status.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LauncherRecord {
+    pub launcher: ManagedLauncher,
+    pub status: RootStatus,
+}
+
+/// Best-effort scan output with independent candidate/check diagnostics.
+#[derive(Debug)]
+pub struct ScanReport {
+    pub records: Vec<LauncherRecord>,
+    pub errors: Vec<String>,
+}
+
+/// Enumerates, checks and deterministically sorts all managed launchers.
+pub fn scan<B: LauncherBackend>(backend: &B, platform: Platform) -> Result<ScanReport, AppError> {
+    let mut records = Vec::new();
+    let mut errors = Vec::new();
+    for item in backend.enumerate()? {
+        match item {
+            Ok(launcher) => match check_root(&launcher.root, platform) {
+                Ok(status) => records.push(LauncherRecord { launcher, status }),
+                Err(error) => errors.push(format!(
+                    "could not check launcher '{}' with recorded root '{}': {error}",
+                    launcher.name,
+                    launcher.root.display()
+                )),
+            },
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    records.sort_by(|left, right| {
+        let left_name = match platform {
+            Platform::Windows => left.launcher.name.to_lowercase(),
+            Platform::Linux | Platform::MacOs => left.launcher.name.clone(),
+        };
+        let right_name = match platform {
+            Platform::Windows => right.launcher.name.to_lowercase(),
+            Platform::Linux | Platform::MacOs => right.launcher.name.clone(),
+        };
+        left_name
+            .cmp(&right_name)
+            .then_with(|| left.launcher.name.cmp(&right.launcher.name))
+    });
+    Ok(ScanReport { records, errors })
 }
 
 /// Creates or confirms one platform launcher without overwriting conflicts.

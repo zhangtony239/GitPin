@@ -6,6 +6,37 @@ use std::process::Command;
 
 use crate::error::AppError;
 
+/// A repository-root condition that is safe for prune to act on.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InvalidRootReason {
+    Missing,
+    NotDirectory,
+    NotWorkingTree,
+    RootMismatch { discovered: PathBuf },
+}
+
+impl std::fmt::Display for InvalidRootReason {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing => formatter.write_str("repository root does not exist"),
+            Self::NotDirectory => formatter.write_str("repository root is not a directory"),
+            Self::NotWorkingTree => formatter.write_str("repository root is not a Git working tree"),
+            Self::RootMismatch { discovered } => write!(
+                formatter,
+                "Git top-level working tree is '{}' rather than the recorded root",
+                discovered.display()
+            ),
+        }
+    }
+}
+
+/// Result of validating a recorded root without looking up Visual Studio Code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RootStatus {
+    Valid,
+    Invalid(InvalidRootReason),
+}
+
 /// A Git working tree normalized for launcher operations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Repository {
@@ -69,6 +100,44 @@ impl Platform {
 /// Asks Git for the absolute top-level working tree containing `input`.
 pub fn discover_root(input: &Path) -> Result<PathBuf, AppError> {
     discover_root_with_git(input, OsStr::new("git"))
+}
+
+/// Checks whether a recorded launcher root is still its repository's top-level working tree.
+pub fn check_root(root: &Path, platform: Platform) -> Result<RootStatus, AppError> {
+    check_root_with_git(root, platform, OsStr::new("git"))
+}
+
+fn check_root_with_git(
+    root: &Path,
+    platform: Platform,
+    git: &OsStr,
+) -> Result<RootStatus, AppError> {
+    let metadata = match std::fs::metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RootStatus::Invalid(InvalidRootReason::Missing));
+        }
+        Err(error) => {
+            return Err(AppError::failure(format!(
+                "could not inspect recorded repository root '{}': {error}",
+                root.display()
+            )));
+        }
+    };
+    if !metadata.is_dir() {
+        return Ok(RootStatus::Invalid(InvalidRootReason::NotDirectory));
+    }
+
+    match discover_root_with_git(root, git) {
+        Ok(discovered) if paths_equivalent(root, &discovered, platform) => Ok(RootStatus::Valid),
+        Ok(discovered) => Ok(RootStatus::Invalid(InvalidRootReason::RootMismatch {
+            discovered,
+        })),
+        Err(error) if error.to_string().contains("could not discover a Git working tree") => {
+            Ok(RootStatus::Invalid(InvalidRootReason::NotWorkingTree))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Derives and validates the exact user-visible repository basename.
@@ -238,8 +307,8 @@ fn discover_root_with_git(input: &Path, git: &OsStr) -> Result<PathBuf, AppError
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_root, discover_root_with_git, paths_equivalent, repository_name, validate_name,
-        Platform,
+        check_root, check_root_with_git, discover_root, discover_root_with_git, paths_equivalent,
+        repository_name, validate_name, InvalidRootReason, Platform, RootStatus,
     };
     use crate::error::ExitCode;
     use std::ffi::OsStr;
@@ -366,6 +435,51 @@ mod tests {
         assert!(error
             .to_string()
             .contains(&directory.path().display().to_string()));
+    }
+
+    #[test]
+    fn checks_valid_missing_file_plain_nested_and_failed_git_roots() {
+        let valid = repository("root-check-valid");
+        assert_eq!(
+            check_root(valid.path(), Platform::current()).unwrap(),
+            RootStatus::Valid
+        );
+
+        let deleted = TempDir::new("root-check-deleted");
+        fs::remove_dir_all(deleted.path()).unwrap();
+        assert_eq!(
+            check_root(deleted.path(), Platform::current()).unwrap(),
+            RootStatus::Invalid(InvalidRootReason::Missing)
+        );
+
+        let file_parent = TempDir::new("root-check-file");
+        let file = file_parent.path().join("file");
+        fs::write(&file, "not a directory").unwrap();
+        assert_eq!(
+            check_root(&file, Platform::current()).unwrap(),
+            RootStatus::Invalid(InvalidRootReason::NotDirectory)
+        );
+
+        let plain = TempDir::new("root-check-plain");
+        assert_eq!(
+            check_root(plain.path(), Platform::current()).unwrap(),
+            RootStatus::Invalid(InvalidRootReason::NotWorkingTree)
+        );
+
+        let nested = valid.path().join("nested");
+        fs::create_dir(&nested).unwrap();
+        assert!(matches!(
+            check_root(&nested, Platform::current()).unwrap(),
+            RootStatus::Invalid(InvalidRootReason::RootMismatch { .. })
+        ));
+
+        let error = check_root_with_git(
+            valid.path(),
+            Platform::current(),
+            OsStr::new("git-pin-command-that-does-not-exist"),
+        )
+        .expect_err("Git execution failure is unsafe to prune");
+        assert!(error.to_string().contains("could not run Git"));
     }
 
     #[test]
