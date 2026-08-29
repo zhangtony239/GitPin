@@ -1,21 +1,13 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Tag-shaped version to validate for this non-publishing dry run
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}-${{ inputs.release_tag || github.ref_name }}
+  group: release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -26,7 +18,6 @@ jobs:
       version: ${{ steps.metadata.outputs.version }}
       tag: ${{ steps.metadata.outputs.tag }}
       package_prefix: ${{ steps.metadata.outputs.package_prefix }}
-      publish: ${{ steps.metadata.outputs.publish }}
 
     steps:
       - name: Check out repository
@@ -38,32 +29,15 @@ jobs:
       - name: Read and validate Cargo package version
         id: metadata
         shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_TAG: ${{ inputs.release_tag }}
-          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
           version="$(cargo metadata --no-deps --format-version 1 | jq -er '.packages[] | select(.name == "git-pin") | .version')"
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            tag="$REF_NAME"
-            publish=true
-          else
-            tag="$DISPATCH_TAG"
-            publish=false
-          fi
-
-          expected_tag="v$version"
-          if [[ "$tag" != "$expected_tag" ]]; then
-            echo "release tag '$tag' does not match Cargo package version '$version' (expected '$expected_tag')" >&2
-            exit 1
-          fi
+          tag="v$version"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "package_prefix=git-pin-$expected_tag" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "package_prefix=git-pin-$tag" >> "$GITHUB_OUTPUT"
 
   compliance:
     name: Dependency licenses and advisories
@@ -289,21 +263,16 @@ jobs:
           )
 
       - name: Create draft GitHub Release with the complete asset set
-        if: needs.metadata.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-        run: gh release create "$RELEASE_TAG" assets/* --draft --verify-tag --title "Git Pin $RELEASE_TAG" --generate-notes
+          RELEASE_SHA: ${{ github.sha }}
+        run: gh release create "$RELEASE_TAG" assets/* --draft --target "$RELEASE_SHA" --title "Git Pin $RELEASE_TAG" --generate-notes
 
       - name: Publish the complete GitHub Release
-        if: needs.metadata.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: gh release edit "$RELEASE_TAG" --draft=false
-
-      - name: Confirm dry run did not publish
-        if: needs.metadata.outputs.publish != 'true'
-        run: echo "Dry run validated the complete release asset set; no GitHub Release was created."
