@@ -629,7 +629,9 @@ mod tests {
 
         let enumerated = backend.enumerate().unwrap();
         assert_eq!(enumerated.len(), 2);
-        assert!(enumerated.iter().any(|item| item.as_ref() == Ok(&launcher)));
+        assert!(enumerated
+            .iter()
+            .any(|item| matches!(item, Ok(managed) if managed == &launcher)));
         assert!(enumerated.iter().any(Result::is_err));
         assert_eq!(
             backend.inspect("project").unwrap(),
