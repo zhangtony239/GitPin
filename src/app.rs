@@ -46,6 +46,13 @@ pub struct ScanReport {
     pub errors: Vec<String>,
 }
 
+/// Best-effort prune output; successful removals are never rolled back.
+#[derive(Debug)]
+pub struct PruneReport {
+    pub removed: Vec<ManagedLauncher>,
+    pub errors: Vec<String>,
+}
+
 /// Enumerates, checks and deterministically sorts all managed launchers.
 pub fn scan<B: LauncherBackend>(backend: &B, platform: Platform) -> Result<ScanReport, AppError> {
     let mut records = Vec::new();
@@ -77,6 +84,59 @@ pub fn scan<B: LauncherBackend>(backend: &B, platform: Platform) -> Result<ScanR
             .then_with(|| left.launcher.name.cmp(&right.launcher.name))
     });
     Ok(ScanReport { records, errors })
+}
+
+/// Lists all managed launchers without modifying them.
+pub fn list<B: LauncherBackend>(backend: &B, platform: Platform) -> Result<ScanReport, AppError> {
+    scan(backend, platform)
+}
+
+/// Removes only launchers whose repository root remains invalid on a pre-delete recheck.
+pub fn prune<B: LauncherBackend>(backend: &B, platform: Platform) -> Result<PruneReport, AppError> {
+    let scan = scan(backend, platform)?;
+    let mut removed = Vec::new();
+    let mut errors = scan.errors;
+
+    for record in scan.records {
+        if !matches!(record.status, RootStatus::Invalid(_)) {
+            continue;
+        }
+        match check_root(&record.launcher.root, platform) {
+            Ok(RootStatus::Valid) => continue,
+            Ok(RootStatus::Invalid(_)) => match backend.remove(&record.launcher) {
+                Ok(()) => removed.push(record.launcher),
+                Err(error) => errors.push(format!(
+                    "could not prune launcher '{}' with recorded root '{}' at '{}': {error}",
+                    record.launcher.name,
+                    record.launcher.root.display(),
+                    record.launcher.path.display()
+                )),
+            },
+            Err(error) => errors.push(format!(
+                "could not recheck launcher '{}' with recorded root '{}' before pruning: {error}",
+                record.launcher.name,
+                record.launcher.root.display()
+            )),
+        }
+    }
+
+    Ok(PruneReport { removed, errors })
+}
+
+fn batch_error(action: &str, errors: Vec<String>) -> Result<(), AppError> {
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::failure(format!(
+            "{action} completed with {} error(s):\n{}",
+            errors.len(),
+            errors
+                .into_iter()
+                .map(|error| format!("- {error}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )))
+    }
 }
 
 /// Creates or confirms one platform launcher without overwriting conflicts.
@@ -224,14 +284,14 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
         return Ok(());
     }
 
-    let current_directory = std::env::current_dir().map_err(|error| {
-        AppError::failure(format!("could not determine current directory: {error}"))
-    })?;
     let platform = Platform::current();
     let backend = NativeBackend::new()?;
 
     match invocation {
         Invocation::Pin(argument) => {
+            let current_directory = std::env::current_dir().map_err(|error| {
+                AppError::failure(format!("could not determine current directory: {error}"))
+            })?;
             let input = argument
                 .as_deref()
                 .map(Path::new)
@@ -252,6 +312,9 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             Ok(())
         }
         Invocation::Unpin(argument) => {
+            let current_directory = std::env::current_dir().map_err(|error| {
+                AppError::failure(format!("could not determine current directory: {error}"))
+            })?;
             let target = resolve_unpin_target(argument.as_deref(), &current_directory, platform)?;
             match unpin(&backend, &target, platform)? {
                 UnpinOutcome::Removed(launcher) => {
@@ -261,8 +324,40 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             }
             Ok(())
         }
-        Invocation::List => Err(AppError::failure("list operation is not implemented")),
-        Invocation::Prune => Err(AppError::failure("prune operation is not implemented")),
+        Invocation::List => {
+            let report = list(&backend, platform)?;
+            if report.records.is_empty() {
+                println!("no pinned repositories");
+            } else {
+                for record in report.records {
+                    match record.status {
+                        RootStatus::Valid => println!(
+                            "{}\t{}\tvalid",
+                            record.launcher.name,
+                            record.launcher.root.display()
+                        ),
+                        RootStatus::Invalid(reason) => println!(
+                            "{}\t{}\tinvalid: {}",
+                            record.launcher.name,
+                            record.launcher.root.display(),
+                            reason
+                        ),
+                    }
+                }
+            }
+            batch_error("list", report.errors)
+        }
+        Invocation::Prune => {
+            let report = prune(&backend, platform)?;
+            if report.removed.is_empty() {
+                println!("no stale pinned repositories to prune");
+            } else {
+                for launcher in report.removed {
+                    println!("pruned '{}' at '{}'", launcher.name, launcher.root.display());
+                }
+            }
+            batch_error("prune", report.errors)
+        }
         Invocation::Help => unreachable!("help returns before environment access"),
     }
 }
