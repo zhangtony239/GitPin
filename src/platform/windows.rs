@@ -706,7 +706,10 @@ mod tests {
         let launcher_root = temporary.0.join("launchers");
         let backend = WindowsBackend::for_test(launcher_root.clone(), code.clone());
         let repository = Repository::fixture(temporary.0.join("project"), "project");
-        assert!(backend.enumerate().expect("missing root is empty").is_empty());
+        assert!(backend
+            .enumerate()
+            .expect("missing root is empty")
+            .is_empty());
         let launcher = match backend.create(&repository, &code).unwrap() {
             CreateOutcome::Created(launcher) => launcher,
             CreateOutcome::Occupied(_) => panic!("fixture must be empty"),
@@ -717,7 +720,10 @@ mod tests {
         let enumerated = backend.enumerate().unwrap();
         assert_eq!(enumerated.len(), 1);
         assert_eq!(enumerated.into_iter().next().unwrap().unwrap(), launcher);
-        assert!(matches!(backend.inspect("project").unwrap(), LauncherInspection::Managed(_)));
+        assert!(matches!(
+            backend.inspect("project").unwrap(),
+            LauncherInspection::Managed(_)
+        ));
     }
 
     #[test]

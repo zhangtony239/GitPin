@@ -80,7 +80,10 @@ mod tests {
 
     #[test]
     fn accepts_every_valid_pin_invocation() {
-        assert_eq!(parse(Operation::Pin, args(&[])).unwrap(), Invocation::Pin(None));
+        assert_eq!(
+            parse(Operation::Pin, args(&[])).unwrap(),
+            Invocation::Pin(None)
+        );
         assert_eq!(
             parse(Operation::Pin, args(&["repository path"])).unwrap(),
             Invocation::Pin(Some(OsString::from("repository path")))

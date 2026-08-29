@@ -20,7 +20,9 @@ impl std::fmt::Display for InvalidRootReason {
         match self {
             Self::Missing => formatter.write_str("repository root does not exist"),
             Self::NotDirectory => formatter.write_str("repository root is not a directory"),
-            Self::NotWorkingTree => formatter.write_str("repository root is not a Git working tree"),
+            Self::NotWorkingTree => {
+                formatter.write_str("repository root is not a Git working tree")
+            }
             Self::RootMismatch { discovered } => write!(
                 formatter,
                 "Git top-level working tree is '{}' rather than the recorded root",
@@ -133,7 +135,11 @@ fn check_root_with_git(
         Ok(discovered) => Ok(RootStatus::Invalid(InvalidRootReason::RootMismatch {
             discovered,
         })),
-        Err(error) if error.to_string().contains("could not discover a Git working tree") => {
+        Err(error)
+            if error
+                .to_string()
+                .contains("could not discover a Git working tree") =>
+        {
             Ok(RootStatus::Invalid(InvalidRootReason::NotWorkingTree))
         }
         Err(error) => Err(error),

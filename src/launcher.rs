@@ -57,7 +57,12 @@ impl LauncherEnumerationError {
 
 impl fmt::Display for LauncherEnumerationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "launcher candidate '{}': {}", self.path.display(), self.detail)
+        write!(
+            formatter,
+            "launcher candidate '{}': {}",
+            self.path.display(),
+            self.detail
+        )
     }
 }
 

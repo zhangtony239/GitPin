@@ -7,9 +7,7 @@ use crate::cli::{Invocation, PIN_HELP};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
-use crate::repo::{
-    check_root, launcher_name, paths_equivalent, Platform, Repository, RootStatus,
-};
+use crate::repo::{check_root, launcher_name, paths_equivalent, Platform, Repository, RootStatus};
 
 /// Successful states returned by pin orchestration.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -353,7 +351,11 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
                 println!("no stale pinned repositories to prune");
             } else {
                 for launcher in report.removed {
-                    println!("pruned '{}' at '{}'", launcher.name, launcher.root.display());
+                    println!(
+                        "pruned '{}' at '{}'",
+                        launcher.name,
+                        launcher.root.display()
+                    );
                 }
             }
             batch_error("prune", report.errors)
@@ -710,7 +712,6 @@ mod tests {
         assert_eq!(by_name, UnpinTarget::Name("exact-project-name".to_owned()));
     }
 
-
     #[test]
     fn list_scans_mixed_records_sorts_them_and_does_not_require_code() {
         let temporary = TempDir::new();
@@ -738,10 +739,16 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["alpha", "zeta"]
         );
-        assert!(matches!(report.records[0].status, crate::repo::RootStatus::Invalid(_)));
+        assert!(matches!(
+            report.records[0].status,
+            crate::repo::RootStatus::Invalid(_)
+        ));
         assert_eq!(report.records[1].status, crate::repo::RootStatus::Valid);
         assert_eq!(report.errors.len(), 1);
-        assert!(backend.removed.borrow().is_empty(), "list must have no side effects");
+        assert!(
+            backend.removed.borrow().is_empty(),
+            "list must have no side effects"
+        );
     }
 
     #[test]
@@ -782,7 +789,10 @@ mod tests {
         let backend = FakeBackend::new(temporary.0.join("launchers"));
         let failed = backend.launcher("failed", &temporary.0.join("missing-failed"));
         let removed = backend.launcher("removed", &temporary.0.join("missing-removed"));
-        backend.fail_remove_names.borrow_mut().push("failed".to_owned());
+        backend
+            .fail_remove_names
+            .borrow_mut()
+            .push("failed".to_owned());
         backend.set_enumeration(vec![
             Err(LauncherEnumerationError::new(
                 temporary.0.join("broken-candidate"),
@@ -795,7 +805,10 @@ mod tests {
         let report = prune(&backend, Platform::current()).unwrap();
         assert_eq!(report.removed, vec![removed]);
         assert_eq!(report.errors.len(), 2);
-        assert!(report.errors.iter().any(|error| error.contains("broken-candidate")));
+        assert!(report
+            .errors
+            .iter()
+            .any(|error| error.contains("broken-candidate")));
         assert!(report.errors.iter().any(|error| error.contains("failed")));
     }
 }

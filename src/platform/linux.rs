@@ -646,7 +646,10 @@ mod tests {
         make_executable(&code);
         let applications = temporary.0.join("applications");
         let backend = LinuxBackend::for_test(applications.clone(), code.clone());
-        assert!(backend.enumerate().expect("missing root is empty").is_empty());
+        assert!(backend
+            .enumerate()
+            .expect("missing root is empty")
+            .is_empty());
         let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
         let launcher = match backend.create(&repository, &code).unwrap() {
             CreateOutcome::Created(launcher) => launcher,
@@ -668,7 +671,10 @@ mod tests {
         assert_eq!(enumerated.len(), 2);
         assert!(enumerated.iter().any(|item| item.as_ref() == Ok(&launcher)));
         assert!(enumerated.iter().any(Result::is_err));
-        assert_eq!(backend.inspect("project").unwrap(), LauncherInspection::Managed(launcher));
+        assert_eq!(
+            backend.inspect("project").unwrap(),
+            LauncherInspection::Managed(launcher)
+        );
     }
 
     #[test]

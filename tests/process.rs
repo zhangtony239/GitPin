@@ -223,7 +223,10 @@ fn help_is_successful_complete_and_has_no_launcher_side_effects() {
         assert!(output.stderr.is_empty());
         let stdout = String::from_utf8_lossy(&output.stdout);
         for expected in ["git pin [path]", "git pin --list", "git pin --prune"] {
-            assert!(stdout.contains(expected), "help omitted {expected:?}: {stdout}");
+            assert!(
+                stdout.contains(expected),
+                "help omitted {expected:?}: {stdout}"
+            );
         }
     }
     environment.assert_no_launcher_residue();
@@ -249,7 +252,10 @@ fn list_is_read_only_and_prune_is_diagnostic_and_idempotent() {
     let output = run(environment.command(git_pin()).arg("--list"));
     assert_success(&output);
     assert!(String::from_utf8_lossy(&output.stdout).contains("invalid"));
-    assert!(launcher.exists(), "invalid list item must remain until prune");
+    assert!(
+        launcher.exists(),
+        "invalid list item must remain until prune"
+    );
 
     let output = run(environment.command(git_pin()).arg("--prune"));
     assert_success(&output);

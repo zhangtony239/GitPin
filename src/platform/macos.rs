@@ -599,10 +599,16 @@ mod tests {
     fn enumeration_matches_inspection_reports_corrupt_managed_and_ignores_foreign_bundles() {
         let temporary = TempDir::new();
         let backend = test_backend(&temporary);
-        assert!(backend.enumerate().expect("missing root is empty").is_empty());
+        assert!(backend
+            .enumerate()
+            .expect("missing root is empty")
+            .is_empty());
         let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
         let launcher = match backend
-            .create(&repository, Path::new("/Applications/Visual Studio Code.app"))
+            .create(
+                &repository,
+                Path::new("/Applications/Visual Studio Code.app"),
+            )
             .unwrap()
         {
             CreateOutcome::Created(launcher) => launcher,
@@ -610,7 +616,10 @@ mod tests {
         };
         let foreign = backend.launcher_root().as_path().join("foreign.app");
         fs::create_dir_all(&foreign).unwrap();
-        let corrupt = backend.launcher_root().as_path().join("corrupt.app/Contents");
+        let corrupt = backend
+            .launcher_root()
+            .as_path()
+            .join("corrupt.app/Contents");
         fs::create_dir_all(&corrupt).unwrap();
         fs::write(
             corrupt.join("Info.plist"),
@@ -622,7 +631,10 @@ mod tests {
         assert_eq!(enumerated.len(), 2);
         assert!(enumerated.iter().any(|item| item.as_ref() == Ok(&launcher)));
         assert!(enumerated.iter().any(Result::is_err));
-        assert_eq!(backend.inspect("project").unwrap(), LauncherInspection::Managed(launcher));
+        assert_eq!(
+            backend.inspect("project").unwrap(),
+            LauncherInspection::Managed(launcher)
+        );
     }
 
     #[test]
