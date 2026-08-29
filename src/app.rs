@@ -3,7 +3,7 @@
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::cli::{Invocation, Operation};
+use crate::cli::{Invocation, PIN_HELP};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
@@ -170,16 +170,20 @@ pub fn unpin<B: LauncherBackend>(
 
 /// Runs one of the public commands.
 pub fn run(invocation: Invocation) -> Result<(), AppError> {
+    if invocation == Invocation::Help {
+        print!("{PIN_HELP}");
+        return Ok(());
+    }
+
     let current_directory = std::env::current_dir().map_err(|error| {
         AppError::failure(format!("could not determine current directory: {error}"))
     })?;
     let platform = Platform::current();
     let backend = NativeBackend::new()?;
 
-    match invocation.operation {
-        Operation::Pin => {
-            let input = invocation
-                .argument
+    match invocation {
+        Invocation::Pin(argument) => {
+            let input = argument
                 .as_deref()
                 .map(Path::new)
                 .unwrap_or(&current_directory);
@@ -198,9 +202,8 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             }
             Ok(())
         }
-        Operation::Unpin => {
-            let target =
-                resolve_unpin_target(invocation.argument.as_deref(), &current_directory, platform)?;
+        Invocation::Unpin(argument) => {
+            let target = resolve_unpin_target(argument.as_deref(), &current_directory, platform)?;
             match unpin(&backend, &target, platform)? {
                 UnpinOutcome::Removed(launcher) => {
                     println!("unpinned '{}'", launcher.name)
@@ -209,6 +212,9 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             }
             Ok(())
         }
+        Invocation::List => Err(AppError::failure("list operation is not implemented")),
+        Invocation::Prune => Err(AppError::failure("prune operation is not implemented")),
+        Invocation::Help => unreachable!("help returns before environment access"),
     }
 }
 
