@@ -118,6 +118,10 @@ Git Pin 以 Git 认定的顶层工作树为准。启动器显示名称取自根�
 
 Windows、Linux 和 macOS 上的 GitHub Actions 是权威的编译、测试、打包与兼容门禁。已安装 Rust 的贡献者可以在本地执行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test --locked --all-targets`；本地结果不能替代必需的 CI 检查。
 
+## 致谢
+
+感谢 [LINUX DO](https://linux.do/) 社区在 GitPin 的开发和分享过程中给予的支持、反馈和鼓励。
+
 ## 许可证
 
 Git Pin 使用 MIT License 分发，详见 `LICENSE`。
