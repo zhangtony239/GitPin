@@ -28,5 +28,3 @@
 
 - [x] 5.1 更新英文 README 的 v1.2 定位、帮助入口、`pin.ide` 配置示例、作用域优先级、受支持 IDE CLI 契约、固化语义和切换既有 launcher 流程
 - [x] 5.2 同步更新中文 README，删除产品与 Visual Studio Code 绑定的表述，并与英文文档保持相同配置及限制说明
-- [ ] 5.3 运行格式化、静态检查、完整测试与 OpenSpec 严格验证，并通过 Windows、Linux、macOS CI 确认自定义 IDE launcher 和旧 launcher 兼容
-- [ ] 5.4 将 Cargo package/lockfile 版本更新到 `1.2.0`，通过单击 release dry run 或正式流程确认版本派生、三平台 portable 包及帮助/配置 smoke test
