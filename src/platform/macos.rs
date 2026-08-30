@@ -15,6 +15,7 @@ use crate::repo::Repository;
 
 const FORMAT_VERSION: &str = "1";
 const ROOT_KEY: &str = "X-Git-Pin-Repository-Root";
+const IDE_KEY: &str = "X-Git-Pin-Ide-Executable";
 const VERSION_KEY: &str = "X-Git-Pin-Format-Version";
 const EXECUTABLE_NAME: &str = "git-pin-launcher";
 
@@ -23,7 +24,6 @@ pub struct MacOsBackend {
     root: LauncherRoot,
     source_executable: PathBuf,
     registration_command: PathBuf,
-    vscode_applications: Vec<PathBuf>,
 }
 
 impl MacOsBackend {
@@ -52,20 +52,15 @@ impl MacOsBackend {
             registration_command: PathBuf::from(
                 "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
             ),
-            vscode_applications: vec![
-                home.join("Applications/Visual Studio Code.app"),
-                PathBuf::from("/Applications/Visual Studio Code.app"),
-            ],
         })
     }
 
     #[cfg(test)]
-    fn for_test(root: PathBuf, source_executable: PathBuf, vscode_application: PathBuf) -> Self {
+    fn for_test(root: PathBuf, source_executable: PathBuf) -> Self {
         Self {
             root: LauncherRoot::for_test(root),
             source_executable,
             registration_command: PathBuf::from("git-pin-disabled-lsregister"),
-            vscode_applications: vec![vscode_application],
         }
     }
 
@@ -95,14 +90,26 @@ impl MacOsBackend {
         };
         let version = plist_string(&plist, VERSION_KEY);
         let root = plist_string(&plist, ROOT_KEY).map(PathBuf::from);
+        let ide_executable = plist_string(&plist, IDE_KEY)
+            .map(PathBuf::from)
+            .or_else(|| Some(PathBuf::from("code")));
         let executable_is_valid = fs::metadata(&executable)
             .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
             .unwrap_or(false);
-        match (version.as_deref(), root, executable_is_valid) {
-            (Some(FORMAT_VERSION), Some(root), true) if root.is_absolute() => {
+        match (
+            version.as_deref(),
+            root,
+            ide_executable,
+            executable_is_valid,
+        ) {
+            (Some(FORMAT_VERSION), Some(root), Some(ide_executable), true)
+                if root.is_absolute()
+                    && (ide_executable == Path::new("code") || ide_executable.is_absolute()) =>
+            {
                 Ok(LauncherInspection::Managed(ManagedLauncher {
                     name: name.to_owned(),
                     root,
+                    ide_executable,
                     path,
                 }))
             }
@@ -157,7 +164,7 @@ fn xml_escape(value: &str) -> String {
     escaped
 }
 
-fn info_plist(repository: &Repository) -> Result<String, AppError> {
+fn info_plist(repository: &Repository, ide_executable: &Path) -> Result<String, AppError> {
     let root = repository.root().to_str().ok_or_else(|| {
         AppError::failure(format!(
             "repository root '{}' is not valid UTF-8 for macOS bundle metadata",
@@ -166,10 +173,17 @@ fn info_plist(repository: &Repository) -> Result<String, AppError> {
     })?;
     let name = xml_escape(repository.name());
     let root = xml_escape(root);
+    let ide_executable = ide_executable.to_str().ok_or_else(|| {
+        AppError::failure(format!(
+            "IDE executable path '{}' is not valid UTF-8 for macOS bundle metadata",
+            ide_executable.display()
+        ))
+    })?;
+    let ide_executable = xml_escape(ide_executable);
     let identifier = stable_bundle_identifier(repository.root());
 
     Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>CFBundleDisplayName</key>\n  <string>{name}</string>\n  <key>CFBundleExecutable</key>\n  <string>{EXECUTABLE_NAME}</string>\n  <key>CFBundleIdentifier</key>\n  <string>{identifier}</string>\n  <key>CFBundleInfoDictionaryVersion</key>\n  <string>6.0</string>\n  <key>CFBundleName</key>\n  <string>{name}</string>\n  <key>CFBundlePackageType</key>\n  <string>APPL</string>\n  <key>{VERSION_KEY}</key>\n  <string>{FORMAT_VERSION}</string>\n  <key>{ROOT_KEY}</key>\n  <string>{root}</string>\n</dict>\n</plist>\n"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>CFBundleDisplayName</key>\n  <string>{name}</string>\n  <key>CFBundleExecutable</key>\n  <string>{EXECUTABLE_NAME}</string>\n  <key>CFBundleIdentifier</key>\n  <string>{identifier}</string>\n  <key>CFBundleInfoDictionaryVersion</key>\n  <string>6.0</string>\n  <key>CFBundleName</key>\n  <string>{name}</string>\n  <key>CFBundlePackageType</key>\n  <string>APPL</string>\n  <key>{VERSION_KEY}</key>\n  <string>{FORMAT_VERSION}</string>\n  <key>{ROOT_KEY}</key>\n  <string>{root}</string>\n  <key>{IDE_KEY}</key>\n  <string>{ide_executable}</string>\n</dict>\n</plist>\n"
     ))
 }
 
@@ -234,23 +248,6 @@ impl LauncherBackend for MacOsBackend {
         &self.root
     }
 
-    fn vscode_executable(&self) -> Result<PathBuf, AppError> {
-        self.vscode_applications
-            .iter()
-            .find(|application| application.is_dir())
-            .cloned()
-            .ok_or_else(|| {
-                AppError::failure(format!(
-                    "could not find stable Visual Studio Code in any standard location: {}",
-                    self.vscode_applications
-                        .iter()
-                        .map(|path| format!("'{}'", path.display()))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-            })
-    }
-
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError> {
         let path = self.bundle_path(name);
         self.inspect_path(name, path)
@@ -309,7 +306,11 @@ impl LauncherBackend for MacOsBackend {
         Ok(launchers)
     }
 
-    fn create(&self, repository: &Repository, _vscode: &Path) -> Result<CreateOutcome, AppError> {
+    fn create(
+        &self,
+        repository: &Repository,
+        ide_executable: &Path,
+    ) -> Result<CreateOutcome, AppError> {
         let launcher_metadata = fs::metadata(&self.source_executable).map_err(|error| {
             AppError::failure(format!(
                 "could not access current git-pin executable '{}': {error}",
@@ -345,7 +346,11 @@ impl LauncherBackend for MacOsBackend {
                     temporary.display()
                 ))
             })?;
-            fs::write(contents.join("Info.plist"), info_plist(repository)?).map_err(|error| {
+            fs::write(
+                contents.join("Info.plist"),
+                info_plist(repository, ide_executable)?,
+            )
+            .map_err(|error| {
                 AppError::failure(format!(
                     "could not write temporary macOS bundle metadata '{}': {error}",
                     temporary.display()
@@ -444,7 +449,7 @@ impl LauncherBackend for MacOsBackend {
 mod tests {
     use super::{
         info_plist, stable_bundle_identifier, MacOsBackend, EXECUTABLE_NAME, FORMAT_VERSION,
-        ROOT_KEY, VERSION_KEY,
+        IDE_KEY, ROOT_KEY, VERSION_KEY,
     };
     use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
     use crate::repo::{Platform, Repository};
@@ -489,9 +494,7 @@ mod tests {
     fn test_backend(temporary: &TempDir) -> MacOsBackend {
         let launcher = temporary.0.join(EXECUTABLE_NAME);
         make_executable(&launcher);
-        let vscode = temporary.0.join("Visual Studio Code.app");
-        fs::create_dir_all(&vscode).expect("VS Code application fixture must be created");
-        MacOsBackend::for_test(temporary.0.join("Applications"), launcher, vscode)
+        MacOsBackend::for_test(temporary.0.join("Applications"), launcher)
     }
 
     #[test]
@@ -499,7 +502,6 @@ mod tests {
         let backend = MacOsBackend::for_test(
             PathBuf::from("/tmp/applications"),
             PathBuf::from("/tmp/git-pin-launcher"),
-            PathBuf::from("/tmp/Visual Studio Code.app"),
         );
         assert_eq!(
             backend.launcher_root().as_path(),
@@ -525,7 +527,8 @@ mod tests {
             PathBuf::from("/work/项目 & <source> 'quoted'"),
             "项目 & <source>",
         );
-        let plist = info_plist(&repository).expect("plist must serialize");
+        let plist = info_plist(&repository, Path::new("/opt/Cursor 编辑器/cursor"))
+            .expect("plist must serialize");
 
         assert!(plist.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
         assert!(plist.contains("<string>项目 &amp; &lt;source&gt;</string>"));
@@ -533,6 +536,8 @@ mod tests {
         assert!(plist.contains(&format!("<key>{VERSION_KEY}</key>")));
         assert!(plist.contains(&format!("<string>{FORMAT_VERSION}</string>")));
         assert!(plist.contains(&format!("<key>{ROOT_KEY}</key>")));
+        assert!(plist.contains(&format!("<key>{IDE_KEY}</key>")));
+        assert!(plist.contains("/opt/Cursor 编辑器/cursor"));
         assert!(plist.contains(&format!("<string>{EXECUTABLE_NAME}</string>")));
         assert!(plist.contains(&stable_bundle_identifier(repository.root())));
     }
@@ -666,6 +671,7 @@ mod tests {
         let outside = ManagedLauncher {
             name: "project".to_owned(),
             root: PathBuf::from("/work/project"),
+            ide_executable: PathBuf::from("/opt/cursor"),
             path: temporary.0.join("outside.app"),
         };
         assert!(backend.remove(&outside).is_err());
@@ -701,7 +707,10 @@ mod tests {
             "项目 with spaces & shell;$HOME`literal`",
         );
 
-        let launcher = match pin(&backend, &repository, Platform::MacOs)
+        let ide = temporary.0.join("Cursor 编辑器/cursor");
+        fs::create_dir_all(ide.parent().unwrap()).unwrap();
+        make_executable(&ide);
+        let launcher = match pin(&backend, &repository, &ide, Platform::MacOs)
             .expect("first pin must create an application bundle")
         {
             PinOutcome::Created(launcher) => launcher,
@@ -714,7 +723,8 @@ mod tests {
             repository.root()
         );
         assert!(matches!(
-            pin(&backend, &repository, Platform::MacOs).expect("repeat pin must be idempotent"),
+            pin(&backend, &repository, &ide, Platform::MacOs)
+                .expect("repeat pin must be idempotent"),
             PinOutcome::AlreadyPinned(_)
         ));
 
@@ -722,7 +732,7 @@ mod tests {
             PathBuf::from("/different/项目 with spaces & shell;$HOME`literal`"),
             repository.name(),
         );
-        let error = pin(&backend, &conflicting, Platform::MacOs)
+        let error = pin(&backend, &conflicting, &ide, Platform::MacOs)
             .expect_err("same-name different-root pin must conflict");
         assert!(error.to_string().contains("already points to"));
 

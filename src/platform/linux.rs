@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -18,13 +18,12 @@ const FILE_PREFIX: &str = "git-pin-";
 const FILE_SUFFIX: &str = ".desktop";
 const FORMAT_VERSION: &str = "1";
 const ROOT_KEY: &str = "X-Git-Pin-Repository-Root";
+const IDE_KEY: &str = "X-Git-Pin-Ide-Executable";
 const VERSION_KEY: &str = "X-Git-Pin-Format-Version";
 
 /// Linux implementation backed by XDG Desktop Entry files.
 pub struct LinuxBackend {
     root: LauncherRoot,
-    path: Option<OsString>,
-    vscode_override: Option<PathBuf>,
     refresh_override: Option<PathBuf>,
 }
 
@@ -37,18 +36,14 @@ impl LinuxBackend {
         )?;
         Ok(Self {
             root: LauncherRoot::system(root),
-            path: env::var_os("PATH"),
-            vscode_override: None,
             refresh_override: None,
         })
     }
 
     #[cfg(test)]
-    fn for_test(root: PathBuf, vscode: PathBuf) -> Self {
+    fn for_test(root: PathBuf) -> Self {
         Self {
             root: LauncherRoot::for_test(root),
-            path: None,
-            vscode_override: Some(vscode),
             refresh_override: Some(PathBuf::from("git-pin-disabled-update-desktop-database")),
         }
     }
@@ -79,10 +74,11 @@ impl LinuxBackend {
                 path.display()
             ))
         })?;
-        match parse_managed_root(&content) {
-            Some(root) => Ok(LauncherInspection::Managed(ManagedLauncher {
+        match parse_managed_launcher(&content) {
+            Some((root, ide_executable)) => Ok(LauncherInspection::Managed(ManagedLauncher {
                 name: name.to_owned(),
                 root,
+                ide_executable,
                 path,
             })),
             None => Ok(LauncherInspection::Foreign { path }),
@@ -101,7 +97,10 @@ impl LinuxBackend {
     fn refresh(&self) -> Option<String> {
         let command = match &self.refresh_override {
             Some(command) => command.clone(),
-            None => match find_command("update-desktop-database", self.path.as_deref()) {
+            None => match find_command(
+                "update-desktop-database",
+                std::env::var_os("PATH").as_deref(),
+            ) {
                 Some(command) => command,
                 None => {
                     return Some(format!(
@@ -150,31 +149,9 @@ fn launcher_root_from_environment(
     Ok(data_home.join("applications"))
 }
 
-fn find_vscode(path: Option<&OsStr>) -> Result<PathBuf, AppError> {
-    let mut candidates = Vec::new();
-    if let Some(path) = path {
-        candidates.extend(env::split_paths(path).map(|directory| directory.join("code")));
-    }
-    candidates.extend([
-        PathBuf::from("/usr/bin/code"),
-        PathBuf::from("/usr/local/bin/code"),
-        PathBuf::from("/snap/bin/code"),
-    ]);
-
-    candidates
-        .into_iter()
-        .find(|candidate| is_executable_file(candidate))
-        .and_then(|candidate| fs::canonicalize(candidate).ok())
-        .ok_or_else(|| {
-            AppError::failure(
-                "could not find the stable Visual Studio Code 'code' executable in PATH or a standard installation location",
-            )
-        })
-}
-
 fn find_command(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
     path.into_iter()
-        .flat_map(env::split_paths)
+        .flat_map(std::env::split_paths)
         .map(|directory| directory.join(name))
         .find(|candidate| is_executable_file(candidate))
 }
@@ -185,11 +162,11 @@ fn is_executable_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn desktop_entry(repository: &Repository, vscode: &Path) -> Result<String, AppError> {
-    let vscode = vscode.to_str().ok_or_else(|| {
+fn desktop_entry(repository: &Repository, ide_executable: &Path) -> Result<String, AppError> {
+    let ide_executable = ide_executable.to_str().ok_or_else(|| {
         AppError::failure(format!(
-            "Visual Studio Code path '{}' is not valid UTF-8",
-            vscode.display()
+            "IDE executable path '{}' is not valid UTF-8",
+            ide_executable.display()
         ))
     })?;
     let root = repository.root().to_str().ok_or_else(|| {
@@ -199,12 +176,18 @@ fn desktop_entry(repository: &Repository, vscode: &Path) -> Result<String, AppEr
         ))
     })?;
 
+    let icon = Path::new(ide_executable)
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .unwrap_or("application-x-executable");
     Ok(format!(
-        "[Desktop Entry]\nType=Application\nName={}\nIcon=visual-studio-code\nTerminal=false\nExec={} {}\n{VERSION_KEY}={FORMAT_VERSION}\n{ROOT_KEY}={}\n",
+        "[Desktop Entry]\nType=Application\nName={}\nIcon={}\nTerminal=false\nExec={} {}\n{VERSION_KEY}={FORMAT_VERSION}\n{ROOT_KEY}={}\n{IDE_KEY}={}\n",
         escape_value(repository.name()),
-        quote_exec_argument(vscode),
+        escape_value(icon),
+        quote_exec_argument(ide_executable),
         quote_exec_argument(root),
-        escape_value(root)
+        escape_value(root),
+        escape_value(ide_executable)
     ))
 }
 
@@ -254,10 +237,12 @@ fn quote_exec_argument(argument: &str) -> String {
     quoted
 }
 
-fn parse_managed_root(content: &str) -> Option<PathBuf> {
+fn parse_managed_launcher(content: &str) -> Option<(PathBuf, PathBuf)> {
     let mut in_desktop_entry = false;
     let mut version = None;
     let mut root = None;
+    let mut ide_executable = None;
+    let mut exec = None;
 
     for line in content.lines() {
         if line.starts_with('[') {
@@ -271,13 +256,42 @@ fn parse_managed_root(content: &str) -> Option<PathBuf> {
             version = Some(value);
         } else if let Some(value) = line.strip_prefix(&format!("{ROOT_KEY}=")) {
             root = unescape_value(value).map(PathBuf::from);
+        } else if let Some(value) = line.strip_prefix(&format!("{IDE_KEY}=")) {
+            ide_executable = unescape_value(value).map(PathBuf::from);
+        } else if let Some(value) = line.strip_prefix("Exec=") {
+            exec = parse_first_exec_argument(value).map(PathBuf::from);
         }
     }
 
+    let ide_executable = ide_executable.or(exec)?;
     match (version, root) {
-        (Some(FORMAT_VERSION), Some(root)) if root.is_absolute() => Some(root),
+        (Some(FORMAT_VERSION), Some(root))
+            if root.is_absolute() && ide_executable.is_absolute() =>
+        {
+            Some((root, ide_executable))
+        }
         _ => None,
     }
+}
+
+fn parse_first_exec_argument(value: &str) -> Option<String> {
+    let mut output = String::new();
+    let mut characters = value.chars().peekable();
+    let quoted = characters.next_if_eq(&'"').is_some();
+    while let Some(character) = characters.next() {
+        if quoted && character == '"' {
+            return Some(output);
+        }
+        if !quoted && character.is_whitespace() {
+            return (!output.is_empty()).then_some(output);
+        }
+        if character == '\\' {
+            output.push(characters.next()?);
+        } else {
+            output.push(character);
+        }
+    }
+    (!output.is_empty()).then_some(output)
 }
 
 fn unique_temporary_path(root: &Path, name: &str) -> Result<PathBuf, AppError> {
@@ -303,17 +317,6 @@ fn unique_temporary_path(root: &Path, name: &str) -> Result<PathBuf, AppError> {
 impl LauncherBackend for LinuxBackend {
     fn launcher_root(&self) -> &LauncherRoot {
         &self.root
-    }
-
-    fn vscode_executable(&self) -> Result<PathBuf, AppError> {
-        match &self.vscode_override {
-            Some(vscode) if is_executable_file(vscode) => Ok(vscode.clone()),
-            Some(vscode) => Err(AppError::failure(format!(
-                "injected Visual Studio Code executable '{}' is not executable",
-                vscode.display()
-            ))),
-            None => find_vscode(self.path.as_deref()),
-        }
     }
 
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError> {
@@ -370,7 +373,11 @@ impl LauncherBackend for LinuxBackend {
         Ok(launchers)
     }
 
-    fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError> {
+    fn create(
+        &self,
+        repository: &Repository,
+        ide_executable: &Path,
+    ) -> Result<CreateOutcome, AppError> {
         fs::create_dir_all(self.root.as_path()).map_err(|error| {
             AppError::failure(format!(
                 "could not create Linux launcher directory '{}': {error}",
@@ -378,7 +385,7 @@ impl LauncherBackend for LinuxBackend {
             ))
         })?;
 
-        let content = desktop_entry(repository, vscode)?;
+        let content = desktop_entry(repository, ide_executable)?;
         let temporary = unique_temporary_path(self.root.as_path(), repository.name())?;
         let final_path = self.launcher_path(repository.name());
         let write_result = (|| -> Result<(), AppError> {
@@ -483,8 +490,8 @@ impl LauncherBackend for LinuxBackend {
 #[cfg(test)]
 mod tests {
     use super::{
-        desktop_entry, find_vscode, launcher_root_from_environment, LinuxBackend, FILE_PREFIX,
-        FORMAT_VERSION, ROOT_KEY, VERSION_KEY,
+        desktop_entry, launcher_root_from_environment, LinuxBackend, FILE_PREFIX, FORMAT_VERSION,
+        IDE_KEY, ROOT_KEY, VERSION_KEY,
     };
     use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection};
     use crate::repo::{Platform, Repository};
@@ -542,31 +549,20 @@ mod tests {
     }
 
     #[test]
-    fn finds_an_executable_code_from_path() {
-        let temporary = TempDir::new();
-        let code = temporary.0.join("code");
-        make_executable(&code);
-        assert_eq!(
-            find_vscode(Some(temporary.0.as_os_str())).expect("Code must be found"),
-            fs::canonicalize(code).expect("fixture must canonicalize")
-        );
-    }
-
-    #[test]
     fn uses_prefixed_launcher_names_and_managed_metadata_keys() {
         let temporary = TempDir::new();
         let code = temporary.0.join("code");
         make_executable(&code);
-        let backend = LinuxBackend::for_test(temporary.0.clone(), code);
+        let backend = LinuxBackend::for_test(temporary.0.clone());
         assert_eq!(
             backend.launcher_path("project"),
             temporary.0.join("git-pin-project.desktop")
         );
         assert_eq!(FILE_PREFIX, "git-pin-");
         assert_eq!(ROOT_KEY, "X-Git-Pin-Repository-Root");
+        assert_eq!(IDE_KEY, "X-Git-Pin-Ide-Executable");
         assert_eq!(VERSION_KEY, "X-Git-Pin-Format-Version");
         assert_eq!(FORMAT_VERSION, "1");
-        assert!(backend.vscode_executable().is_ok());
     }
 
     #[test]
@@ -581,13 +577,14 @@ mod tests {
         assert!(entry.starts_with("[Desktop Entry]\n"));
         assert!(entry.contains("Type=Application\n"));
         assert!(entry.contains("Name=项目 with spaces\n"));
-        assert!(entry.contains("Icon=visual-studio-code\n"));
+        assert!(entry.contains("Icon=code\n"));
         assert!(entry.contains("Terminal=false\n"));
         assert!(entry.contains(
             "Exec=\"/opt/Visual Studio Code/code\" \"/work/项目 \\$HOME; \\`echo no\\` \\\\ path\"\n"
         ));
         assert!(!entry.contains("sh -c"));
         assert!(entry.contains(&format!("{VERSION_KEY}={FORMAT_VERSION}\n")));
+        assert!(entry.contains(&format!("{IDE_KEY}=/opt/Visual Studio Code/code\n")));
         assert!(entry.contains(&format!(
             "{ROOT_KEY}=/work/项目 $HOME; `echo no` \\\\ path\n"
         )));
@@ -598,7 +595,7 @@ mod tests {
         let temporary = TempDir::new();
         let code = temporary.0.join("code");
         make_executable(&code);
-        let backend = LinuxBackend::for_test(temporary.0.join("applications"), code.clone());
+        let backend = LinuxBackend::for_test(temporary.0.join("applications"));
         let repository = Repository::fixture(
             temporary.0.join("项目 with spaces;$HOME"),
             "项目 with spaces;$HOME",
@@ -613,6 +610,7 @@ mod tests {
         };
         let metadata = fs::metadata(&launcher.path).expect("launcher must exist");
         assert_eq!(metadata.permissions().mode() & 0o777, 0o755);
+        assert_eq!(launcher.ide_executable, code);
         assert_eq!(
             backend
                 .inspect(repository.name())
@@ -645,7 +643,7 @@ mod tests {
         let code = temporary.0.join("code");
         make_executable(&code);
         let applications = temporary.0.join("applications");
-        let backend = LinuxBackend::for_test(applications.clone(), code.clone());
+        let backend = LinuxBackend::for_test(applications.clone());
         assert!(backend
             .enumerate()
             .expect("missing root is empty")
@@ -686,7 +684,7 @@ mod tests {
         make_executable(&code);
         let applications = temporary.0.join("applications");
         fs::create_dir_all(&applications).expect("applications directory must be created");
-        let backend = LinuxBackend::for_test(applications.clone(), code.clone());
+        let backend = LinuxBackend::for_test(applications.clone());
         let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
         let foreign_path = applications.join("git-pin-project.desktop");
         fs::write(&foreign_path, "[Desktop Entry]\nType=Application\n")
@@ -717,27 +715,24 @@ mod tests {
         fs::write(&success, "#!/bin/sh\nexit 0\n").expect("refresh fixture must be written");
         fs::set_permissions(&success, fs::Permissions::from_mode(0o755))
             .expect("refresh fixture permissions must be set");
-        let successful_backend =
-            LinuxBackend::for_test(temporary.0.join("success-applications"), code.clone())
-                .with_refresh_command(success);
+        let successful_backend = LinuxBackend::for_test(temporary.0.join("success-applications"))
+            .with_refresh_command(success);
         assert_eq!(successful_backend.refresh(), None);
 
         let failure = temporary.0.join("refresh-failure");
         fs::write(&failure, "#!/bin/sh\nexit 7\n").expect("refresh fixture must be written");
         fs::set_permissions(&failure, fs::Permissions::from_mode(0o755))
             .expect("refresh fixture permissions must be set");
-        let failing_backend =
-            LinuxBackend::for_test(temporary.0.join("failure-applications"), code.clone())
-                .with_refresh_command(failure);
+        let failing_backend = LinuxBackend::for_test(temporary.0.join("failure-applications"))
+            .with_refresh_command(failure);
         let warning = failing_backend
             .refresh()
             .expect("non-zero refresh must produce a warning");
         assert!(warning.contains("status"));
         assert!(warning.contains("launcher files remain valid"));
 
-        let missing_backend =
-            LinuxBackend::for_test(temporary.0.join("missing-applications"), code)
-                .with_refresh_command(temporary.0.join("missing-refresh-tool"));
+        let missing_backend = LinuxBackend::for_test(temporary.0.join("missing-applications"))
+            .with_refresh_command(temporary.0.join("missing-refresh-tool"));
         let warning = missing_backend
             .refresh()
             .expect("missing refresh command must produce a warning");
@@ -750,7 +745,7 @@ mod tests {
         let temporary = TempDir::new();
         let code = temporary.0.join("code");
         make_executable(&code);
-        let backend = LinuxBackend::for_test(temporary.0.join("applications"), code.clone())
+        let backend = LinuxBackend::for_test(temporary.0.join("applications"))
             .with_refresh_command(temporary.0.join("missing-refresh-tool"));
         let repository = Repository::fixture(PathBuf::from("/work/project"), "project");
 
@@ -775,13 +770,13 @@ mod tests {
         let temporary = TempDir::new();
         let code = temporary.0.join("code");
         make_executable(&code);
-        let backend = LinuxBackend::for_test(temporary.0.join("applications"), code);
+        let backend = LinuxBackend::for_test(temporary.0.join("applications"));
         let repository = Repository::fixture(
             PathBuf::from("/work/项目 with spaces;$HOME`literal`"),
             "项目 with spaces;$HOME`literal`",
         );
 
-        let launcher = match pin(&backend, &repository, Platform::Linux)
+        let launcher = match pin(&backend, &repository, &code, Platform::Linux)
             .expect("first pin must create the Desktop Entry")
         {
             PinOutcome::Created(launcher) => launcher,
@@ -794,7 +789,8 @@ mod tests {
             LauncherInspection::Managed(ManagedLauncher { root, .. }) if root == repository.root()
         ));
         assert!(matches!(
-            pin(&backend, &repository, Platform::Linux).expect("repeat pin must be idempotent"),
+            pin(&backend, &repository, &code, Platform::Linux)
+                .expect("repeat pin must be idempotent"),
             PinOutcome::AlreadyPinned(_)
         ));
 
@@ -802,7 +798,7 @@ mod tests {
             PathBuf::from("/different/项目 with spaces;$HOME`literal`"),
             repository.name(),
         );
-        let error = pin(&backend, &conflicting, Platform::Linux)
+        let error = pin(&backend, &conflicting, &code, Platform::Linux)
             .expect_err("same-name different-root pin must conflict");
         assert!(error
             .to_string()
@@ -824,5 +820,26 @@ mod tests {
                 .expect("removed slot must inspect cleanly"),
             LauncherInspection::Missing
         );
+    }
+
+    #[test]
+    fn inspects_legacy_code_desktop_entries_without_new_ide_metadata() {
+        let temporary = TempDir::new();
+        let applications = temporary.0.join("applications");
+        fs::create_dir_all(&applications).unwrap();
+        let backend = LinuxBackend::for_test(applications.clone());
+        fs::write(
+            applications.join("git-pin-project.desktop"),
+            format!(
+                "[Desktop Entry]\nType=Application\nName=project\nIcon=visual-studio-code\nTerminal=false\nExec=\"/usr/bin/code\" \"/work/project\"\n{VERSION_KEY}={FORMAT_VERSION}\n{ROOT_KEY}=/work/project\n"
+            ),
+        )
+        .unwrap();
+
+        let LauncherInspection::Managed(launcher) = backend.inspect("project").unwrap() else {
+            panic!("legacy launcher must remain managed");
+        };
+        assert_eq!(launcher.root, Path::new("/work/project"));
+        assert_eq!(launcher.ide_executable, Path::new("/usr/bin/code"));
     }
 }

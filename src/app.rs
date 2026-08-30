@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use crate::cli::{Invocation, PIN_HELP};
+use crate::config::{read_ide, resolve_ide};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
@@ -141,15 +142,9 @@ fn batch_error(action: &str, errors: Vec<String>) -> Result<(), AppError> {
 pub fn pin<B: LauncherBackend>(
     backend: &B,
     repository: &Repository,
+    ide_executable: &Path,
     platform: Platform,
 ) -> Result<PinOutcome, AppError> {
-    let vscode = backend.vscode_executable().map_err(|error| {
-        AppError::failure(format!(
-            "could not pin repository '{}' because Visual Studio Code is unavailable: {error}",
-            repository.root().display()
-        ))
-    })?;
-
     match backend.inspect(repository.name()).map_err(|error| {
         AppError::failure(format!(
             "could not inspect launcher '{}' before pinning '{}': {error}",
@@ -158,13 +153,15 @@ pub fn pin<B: LauncherBackend>(
         ))
     })? {
         LauncherInspection::Missing => {
-            match backend.create(repository, &vscode).map_err(|error| {
-                AppError::failure(format!(
-                    "could not atomically create launcher '{}' for '{}': {error}",
-                    repository.name(),
-                    repository.root().display()
-                ))
-            })? {
+            match backend
+                .create(repository, ide_executable)
+                .map_err(|error| {
+                    AppError::failure(format!(
+                        "could not atomically create launcher '{}' for '{}': {error}",
+                        repository.name(),
+                        repository.root().display()
+                    ))
+                })? {
                 CreateOutcome::Created(launcher) => Ok(PinOutcome::Created(launcher)),
                 CreateOutcome::Occupied(inspection) => {
                     resolve_existing(repository, platform, inspection)
@@ -295,7 +292,9 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
                 .map(Path::new)
                 .unwrap_or(&current_directory);
             let repository = Repository::discover(input, platform)?;
-            match pin(&backend, &repository, platform)? {
+            let configured_ide = read_ide()?;
+            let ide_executable = resolve_ide(&configured_ide)?;
+            match pin(&backend, &repository, &ide_executable, platform)? {
                 PinOutcome::Created(launcher) => println!(
                     "pinned '{}' at '{}'",
                     repository.root().display(),
@@ -411,7 +410,6 @@ mod tests {
         root: LauncherRoot,
         inspection: RefCell<LauncherInspection>,
         occupied_on_create: RefCell<Option<LauncherInspection>>,
-        fail_vscode: Cell<bool>,
         fail_inspect: Cell<bool>,
         fail_create: Cell<bool>,
         fail_remove: Cell<bool>,
@@ -426,7 +424,6 @@ mod tests {
                 root: LauncherRoot::for_test(root),
                 inspection: RefCell::new(LauncherInspection::Missing),
                 occupied_on_create: RefCell::new(None),
-                fail_vscode: Cell::new(false),
                 fail_inspect: Cell::new(false),
                 fail_create: Cell::new(false),
                 fail_remove: Cell::new(false),
@@ -440,6 +437,7 @@ mod tests {
             ManagedLauncher {
                 name: name.to_owned(),
                 root: root.to_owned(),
+                ide_executable: PathBuf::from("fake-code"),
                 path: self.root.as_path().join(name),
             }
         }
@@ -460,14 +458,6 @@ mod tests {
     impl LauncherBackend for FakeBackend {
         fn launcher_root(&self) -> &LauncherRoot {
             &self.root
-        }
-
-        fn vscode_executable(&self) -> Result<PathBuf, AppError> {
-            if self.fail_vscode.get() {
-                Err(AppError::failure("fake VS Code lookup failed"))
-            } else {
-                Ok(PathBuf::from("fake-code"))
-            }
         }
 
         fn inspect(&self, _name: &str) -> Result<LauncherInspection, AppError> {
@@ -491,7 +481,7 @@ mod tests {
         fn create(
             &self,
             repository: &Repository,
-            _vscode: &Path,
+            ide_executable: &Path,
         ) -> Result<CreateOutcome, AppError> {
             fs::create_dir_all(self.root.as_path())
                 .map_err(|error| AppError::failure(error.to_string()))?;
@@ -508,7 +498,8 @@ mod tests {
                 return Ok(CreateOutcome::Occupied(inspection));
             }
 
-            let launcher = self.launcher(repository.name(), repository.root());
+            let mut launcher = self.launcher(repository.name(), repository.root());
+            launcher.ide_executable = ide_executable.to_owned();
             fs::rename(&temporary, &launcher.path)
                 .map_err(|error| AppError::failure(error.to_string()))?;
             self.set_inspection(LauncherInspection::Managed(launcher.clone()));
@@ -539,6 +530,10 @@ mod tests {
         Repository::fixture(PathBuf::from(root), "project")
     }
 
+    fn ide(name: &str) -> PathBuf {
+        PathBuf::from("/tools").join(name)
+    }
+
     fn initialize_repository(path: &Path) {
         fs::create_dir_all(path).unwrap();
         let output = std::process::Command::new("git")
@@ -557,13 +552,18 @@ mod tests {
         let repository = repository("/work/project");
 
         assert!(matches!(
-            pin(&backend, &repository, Platform::Linux).expect("pin must succeed"),
+            pin(&backend, &repository, &ide("code"), Platform::Linux).expect("pin must succeed"),
             PinOutcome::Created(_)
         ));
         assert!(matches!(
-            pin(&backend, &repository, Platform::Linux).expect("repeat pin must succeed"),
+            pin(&backend, &repository, &ide("cursor"), Platform::Linux)
+                .expect("repeat pin must succeed"),
             PinOutcome::AlreadyPinned(_)
         ));
+        let LauncherInspection::Managed(existing) = backend.inspect("project").unwrap() else {
+            panic!("launcher must remain managed");
+        };
+        assert_eq!(existing.ide_executable, ide("code"));
         assert!(temporary.0.join("project").is_file());
         assert!(!backend.temp_path("project").exists());
     }
@@ -574,15 +574,26 @@ mod tests {
         let backend = FakeBackend::new(temporary.0.clone());
         let other = backend.launcher("project", Path::new("/other/project"));
         backend.set_inspection(LauncherInspection::Managed(other));
-        let error = pin(&backend, &repository("/work/project"), Platform::Linux)
-            .expect_err("different roots must conflict");
+        let error = pin(
+            &backend,
+            &repository("/work/project"),
+            &ide("code"),
+            Platform::Linux,
+        )
+        .expect_err("different roots must conflict");
         assert!(error.to_string().contains("/other/project"));
 
         let foreign = temporary.0.join("project");
         backend.set_inspection(LauncherInspection::Foreign {
             path: foreign.clone(),
         });
-        assert!(pin(&backend, &repository("/work/project"), Platform::Linux).is_err());
+        assert!(pin(
+            &backend,
+            &repository("/work/project"),
+            &ide("code"),
+            Platform::Linux,
+        )
+        .is_err());
         assert!(
             !foreign.exists(),
             "orchestration must not touch foreign paths"
@@ -598,34 +609,28 @@ mod tests {
         *backend.occupied_on_create.borrow_mut() = Some(LauncherInspection::Managed(raced.clone()));
 
         assert_eq!(
-            pin(&backend, &repository, Platform::Linux).expect("same-root race is idempotent"),
+            pin(&backend, &repository, &ide("code"), Platform::Linux)
+                .expect("same-root race is idempotent"),
             PinOutcome::AlreadyPinned(raced)
         );
         assert!(!backend.temp_path("project").exists());
     }
 
     #[test]
-    fn pin_contextualizes_lookup_inspect_and_create_failures() {
+    fn pin_contextualizes_inspect_and_create_failures() {
         let temporary = TempDir::new();
         let backend = FakeBackend::new(temporary.0.clone());
         let repository = repository("/work/project");
 
-        backend.fail_vscode.set(true);
-        assert!(pin(&backend, &repository, Platform::Linux)
-            .expect_err("lookup must fail")
-            .to_string()
-            .contains("Visual Studio Code"));
-        backend.fail_vscode.set(false);
-
         backend.fail_inspect.set(true);
-        assert!(pin(&backend, &repository, Platform::Linux)
+        assert!(pin(&backend, &repository, &ide("code"), Platform::Linux)
             .expect_err("inspect must fail")
             .to_string()
             .contains("inspect launcher"));
         backend.fail_inspect.set(false);
 
         backend.fail_create.set(true);
-        assert!(pin(&backend, &repository, Platform::Linux)
+        assert!(pin(&backend, &repository, &ide("code"), Platform::Linux)
             .expect_err("create must fail")
             .to_string()
             .contains("atomically create"));
@@ -716,7 +721,6 @@ mod tests {
     fn list_scans_mixed_records_sorts_them_and_does_not_require_code() {
         let temporary = TempDir::new();
         let backend = FakeBackend::new(temporary.0.join("launchers"));
-        backend.fail_vscode.set(true);
         let valid_root = temporary.0.join("valid");
         initialize_repository(&valid_root);
         let valid = backend.launcher("zeta", &valid_root);
@@ -749,6 +753,24 @@ mod tests {
             backend.removed.borrow().is_empty(),
             "list must have no side effects"
         );
+    }
+
+    #[test]
+    fn list_and_prune_ignore_whether_the_frozen_ide_still_exists() {
+        let temporary = TempDir::new();
+        let backend = FakeBackend::new(temporary.0.join("launchers"));
+        let valid_root = temporary.0.join("valid");
+        initialize_repository(&valid_root);
+        let mut launcher = backend.launcher("valid", &valid_root);
+        launcher.ide_executable = temporary.0.join("moved-ide");
+        backend.set_enumeration(vec![Ok(launcher.clone())]);
+
+        let listed = list(&backend, Platform::current()).unwrap();
+        assert_eq!(listed.records.len(), 1);
+        assert_eq!(listed.records[0].status, crate::repo::RootStatus::Valid);
+        let pruned = prune(&backend, Platform::current()).unwrap();
+        assert!(pruned.removed.is_empty());
+        assert!(backend.removed.borrow().is_empty());
     }
 
     #[test]

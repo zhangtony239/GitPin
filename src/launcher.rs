@@ -32,6 +32,7 @@ impl LauncherRoot {
 pub struct ManagedLauncher {
     pub name: String,
     pub root: PathBuf,
+    pub ide_executable: PathBuf,
     pub path: PathBuf,
 }
 
@@ -89,9 +90,6 @@ pub trait LauncherBackend {
     /// The isolated or system launcher root owned by this backend instance.
     fn launcher_root(&self) -> &LauncherRoot;
 
-    /// Resolves and validates the stable Visual Studio Code GUI executable.
-    fn vscode_executable(&self) -> Result<PathBuf, AppError>;
-
     /// Inspects the exact launcher slot associated with `name`.
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError>;
 
@@ -99,7 +97,11 @@ pub trait LauncherBackend {
     fn enumerate(&self) -> Result<Vec<LauncherEnumerationItem>, AppError>;
 
     /// Creates and atomically commits a launcher into a previously missing slot.
-    fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError>;
+    fn create(
+        &self,
+        repository: &Repository,
+        ide_executable: &Path,
+    ) -> Result<CreateOutcome, AppError>;
 
     /// Removes exactly the launcher that was previously inspected and verified.
     fn remove(&self, launcher: &ManagedLauncher) -> Result<(), AppError>;

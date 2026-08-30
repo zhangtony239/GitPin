@@ -95,6 +95,8 @@ impl ProcessEnvironment {
     fn command(&self, executable: impl AsRef<OsStr>) -> Command {
         let mut command = Command::new(executable);
         command.env("PATH", &self.path);
+        command.env("GIT_CONFIG_SYSTEM", self.root.0.join("system.gitconfig"));
+        command.env("GIT_CONFIG_GLOBAL", self.root.0.join("global.gitconfig"));
 
         #[cfg(target_os = "linux")]
         {
@@ -176,16 +178,25 @@ impl ProcessEnvironment {
             .collect();
         assert!(residue.is_empty(), "launcher residue remained: {residue:?}");
     }
+
+    fn create_ide(&self, name: &str) -> PathBuf {
+        let tools = self.root.0.join("tools");
+        let file_name = if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_owned()
+        };
+        let executable = tools.join(file_name);
+        create_ide_fixture(&executable);
+        git_pin::config::resolve_ide(executable.to_str().expect("fixture path must be UTF-8"))
+            .expect("IDE fixture must resolve like production configuration")
+    }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 fn create_vscode_fixture(tools: &Path, _root: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-
     let code = tools.join("code");
-    fs::write(&code, "#!/bin/sh\nexit 0\n").expect("Code fixture must be written");
-    fs::set_permissions(code, fs::Permissions::from_mode(0o755))
-        .expect("Code fixture must be executable");
+    create_ide_fixture(&code);
 }
 
 #[cfg(target_os = "windows")]
@@ -194,10 +205,17 @@ fn create_vscode_fixture(tools: &Path, _root: &Path) {
         .expect("a valid PE executable must be copied as the Code fixture");
 }
 
-#[cfg(target_os = "macos")]
-fn create_vscode_fixture(_tools: &Path, root: &Path) {
-    fs::create_dir_all(root.join("home/Applications/Visual Studio Code.app"))
-        .expect("isolated user-level Visual Studio Code fixture must be created");
+#[cfg(unix)]
+fn create_ide_fixture(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::write(path, "#!/bin/sh\nexit 0\n").expect("IDE fixture must be written");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+        .expect("IDE fixture must be executable");
+}
+
+#[cfg(windows)]
+fn create_ide_fixture(path: &Path) {
+    fs::copy(git_pin(), path).expect("a valid PE executable must be copied as the IDE fixture");
 }
 
 #[test]
@@ -217,19 +235,119 @@ fn both_binaries_reject_options_and_extra_arguments_with_usage_exit_code() {
 #[test]
 fn help_is_successful_complete_and_has_no_launcher_side_effects() {
     let environment = ProcessEnvironment::new("help");
+    let mut expected_stdout = None;
     for argument in ["--help", "-h"] {
         let output = run(environment.command(git_pin()).arg(argument));
         assert_success(&output);
         assert!(output.stderr.is_empty());
         let stdout = String::from_utf8_lossy(&output.stdout);
-        for expected in ["git pin [path]", "git pin --list", "git pin --prune"] {
+        for expected in [
+            "git pin [path]",
+            "git pin --list",
+            "git pin --prune",
+            "pin.ide",
+            "default is `code`",
+            "ide path/to/repo",
+            "git pin -h",
+            "git-pin --help",
+        ] {
             assert!(
                 stdout.contains(expected),
                 "help omitted {expected:?}: {stdout}"
             );
         }
+        if let Some(expected) = &expected_stdout {
+            assert_eq!(&output.stdout, expected);
+        } else {
+            expected_stdout = Some(output.stdout);
+        }
     }
+
+    let git_dispatched = run(environment.command("git").args(["pin", "-h"]));
+    assert_success(&git_dispatched);
+    assert!(git_dispatched.stderr.is_empty());
+    assert_eq!(git_dispatched.stdout, expected_stdout.unwrap());
     environment.assert_no_launcher_residue();
+}
+
+#[test]
+fn git_dispatch_preserves_effective_ide_configuration_precedence() {
+    let environment = ProcessEnvironment::new("git-config");
+    let repository = environment.root.0.join("repositories/configured-project");
+    initialize_repository(&repository);
+    let global_ide = environment.create_ide("global-cursor");
+    let repository_ide = environment.create_ide("repository-cursor");
+    let command_line_ide = environment.create_ide("command-line-cursor");
+
+    assert_success(&run(environment
+        .command("git")
+        .args(["config", "--global", "pin.ide"])
+        .arg(&global_ide)));
+    assert_success(&run(environment
+        .command("git")
+        .current_dir(&repository)
+        .args(["config", "pin.ide"])
+        .arg(&repository_ide)));
+
+    let output = run(environment.command("git").current_dir(&repository).args([
+        "-c",
+        &format!("pin.ide={}", command_line_ide.display()),
+        "pin",
+    ]));
+    assert_success(&output);
+    let launcher = environment.launcher("configured-project");
+    assert!(launcher.exists());
+    assert_launcher_contains_path(&launcher, &command_line_ide);
+
+    assert_success(&run(environment.command(git_unpin()).arg(&repository)));
+    assert_success(&run(environment
+        .command("git")
+        .current_dir(&repository)
+        .arg("pin")));
+    assert_launcher_contains_path(&launcher, &repository_ide);
+
+    assert_success(&run(environment.command(git_unpin()).arg(&repository)));
+    assert_success(&run(environment
+        .command("git")
+        .current_dir(&repository)
+        .args(["config", "--unset", "pin.ide"])));
+    assert_success(&run(environment
+        .command("git")
+        .current_dir(&repository)
+        .arg("pin")));
+    assert_launcher_contains_path(&launcher, &global_ide);
+}
+
+fn assert_launcher_contains_path(launcher: &Path, expected: &Path) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let bytes = fs::read(launcher).expect("Shell Link must be readable");
+        let expected_display = expected.display().to_string();
+        let expected_bytes: Vec<u8> = expected
+            .as_os_str()
+            .encode_wide()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert!(
+            bytes
+                .windows(expected_bytes.len())
+                .any(|window| window == expected_bytes),
+            "Shell Link did not freeze expected IDE path {}",
+            expected_display
+        );
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let content = fs::read_to_string(launcher).expect("Desktop Entry must be readable");
+        assert!(content.contains(&expected.display().to_string()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let content = fs::read_to_string(launcher.join("Contents/Info.plist"))
+            .expect("bundle metadata must be readable");
+        assert!(content.contains(&expected.display().to_string()));
+    }
 }
 
 #[test]

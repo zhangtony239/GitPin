@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const ROOT_KEY: &str = "X-Git-Pin-Repository-Root";
+const IDE_KEY: &str = "X-Git-Pin-Ide-Executable";
 const VERSION_KEY: &str = "X-Git-Pin-Format-Version";
 const FORMAT_VERSION: &str = "1";
 const EXECUTABLE_NAME: &str = "git-pin-launcher";
@@ -24,11 +25,11 @@ fn run_if_managed_with(
     current_executable: &Path,
     open_executable: &Path,
 ) -> Option<Result<(), String>> {
-    let root = repository_root_for_launcher(current_executable).ok()?;
-    Some(open_repository(&root, open_executable))
+    let launch = launch_metadata_for_launcher(current_executable).ok()?;
+    Some(launch_repository(&launch, open_executable))
 }
 
-/// Reads the owning bundle and opens its repository in stable Visual Studio Code.
+/// Reads the owning bundle and opens its repository in the frozen IDE CLI.
 pub fn run() -> Result<(), String> {
     let current_executable = std::env::current_exe()
         .map_err(|error| format!("could not locate macOS bundle launcher: {error}"))?;
@@ -37,33 +38,45 @@ pub fn run() -> Result<(), String> {
 
 /// Testable launcher entry point with explicit executable paths.
 pub fn run_with(current_executable: &Path, open_executable: &Path) -> Result<(), String> {
-    let root = repository_root_for_launcher(current_executable)?;
-    open_repository(&root, open_executable)
+    let launch = launch_metadata_for_launcher(current_executable)?;
+    launch_repository(&launch, open_executable)
 }
 
-fn open_repository(root: &Path, open_executable: &Path) -> Result<(), String> {
-    let status = Command::new(open_executable)
-        .arg("-a")
-        .arg("Visual Studio Code")
-        .arg("--args")
-        .arg(root)
-        .status()
-        .map_err(|error| {
-            format!(
-                "could not launch Visual Studio Code for repository '{}': {error}",
-                root.display()
-            )
-        })?;
+struct LaunchMetadata {
+    root: PathBuf,
+    ide_executable: Option<PathBuf>,
+}
+
+fn launch_repository(launch: &LaunchMetadata, legacy_open_executable: &Path) -> Result<(), String> {
+    let mut command = match &launch.ide_executable {
+        Some(ide_executable) => Command::new(ide_executable),
+        None => {
+            let mut command = Command::new(legacy_open_executable);
+            command.arg("-a").arg("Visual Studio Code").arg("--args");
+            command
+        }
+    };
+    let status = command.arg(&launch.root).status().map_err(|error| {
+        format!(
+            "could not launch the configured IDE for repository '{}': {error}",
+            launch.root.display()
+        )
+    })?;
     if !status.success() {
         return Err(format!(
-            "macOS open failed with status {status} for repository '{}'",
-            root.display()
+            "macOS IDE launcher failed with status {status} for repository '{}'",
+            launch.root.display()
         ));
     }
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn repository_root_for_launcher(current_executable: &Path) -> Result<PathBuf, String> {
+    Ok(launch_metadata_for_launcher(current_executable)?.root)
+}
+
+fn launch_metadata_for_launcher(current_executable: &Path) -> Result<LaunchMetadata, String> {
     if current_executable
         .file_name()
         .and_then(|name| name.to_str())
@@ -163,7 +176,20 @@ pub(crate) fn repository_root_for_launcher(current_executable: &Path) -> Result<
             plist_path.display()
         ));
     }
-    Ok(root)
+    let ide_executable = plist_string(&plist, IDE_KEY).map(PathBuf::from);
+    if ide_executable
+        .as_ref()
+        .is_some_and(|ide_executable| !ide_executable.is_absolute())
+    {
+        return Err(format!(
+            "managed IDE executable in '{}' is not absolute",
+            plist_path.display()
+        ));
+    }
+    Ok(LaunchMetadata {
+        root,
+        ide_executable,
+    })
 }
 
 fn plist_string(plist: &str, key: &str) -> Option<String> {
@@ -247,6 +273,26 @@ mod tests {
         executable
     }
 
+    fn configurable_bundle_fixture(temporary: &TempDir, ide: &std::path::Path) -> PathBuf {
+        let executable = bundle_fixture(temporary);
+        let plist = executable
+            .parent()
+            .expect("launcher must have parent")
+            .parent()
+            .expect("MacOS must have parent")
+            .join("Info.plist");
+        let content = fs::read_to_string(&plist).expect("plist fixture must be readable");
+        let content = content.replace(
+            "</dict>",
+            &format!(
+                "<key>X-Git-Pin-Ide-Executable</key><string>{}</string></dict>",
+                ide.display()
+            ),
+        );
+        fs::write(plist, content).expect("configurable plist fixture must be written");
+        executable
+    }
+
     #[test]
     fn reads_repository_root_from_the_owning_bundle() {
         let temporary = TempDir::new();
@@ -278,6 +324,33 @@ mod tests {
         assert_eq!(
             fs::read_to_string(output).expect("captured arguments must be readable"),
             "-a\nVisual Studio Code\n--args\n/work/项目 & shell;$HOME\n"
+        );
+    }
+
+    #[test]
+    fn invokes_the_frozen_ide_directly_with_one_repository_argument() {
+        let temporary = TempDir::new();
+        let output = temporary.0.join("captured arguments.txt");
+        let ide = temporary.0.join("Cursor 编辑器").join("cursor");
+        fs::create_dir_all(ide.parent().expect("IDE fixture must have a parent"))
+            .expect("IDE fixture directory must be created");
+        fs::write(
+            &ide,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+                output.display()
+            ),
+        )
+        .expect("IDE fixture must be written");
+        fs::set_permissions(&ide, fs::Permissions::from_mode(0o755))
+            .expect("IDE fixture must be executable");
+        let executable = configurable_bundle_fixture(&temporary, &ide);
+
+        run_with(&executable, PathBuf::from("/missing/legacy-open").as_path())
+            .expect("launcher must directly execute the configured IDE");
+        assert_eq!(
+            fs::read_to_string(output).expect("captured arguments must be readable"),
+            "/work/项目 & shell;$HOME\n"
         );
     }
 

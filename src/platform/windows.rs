@@ -48,11 +48,6 @@ impl Drop for ComApartment {
 /// Windows implementation backed by Start Menu Shell Links.
 pub struct WindowsBackend {
     root: LauncherRoot,
-    path: Option<OsString>,
-    local_app_data: Option<PathBuf>,
-    program_files: Option<PathBuf>,
-    program_files_x86: Option<PathBuf>,
-    vscode_override: Option<PathBuf>,
 }
 
 impl WindowsBackend {
@@ -70,23 +65,13 @@ impl WindowsBackend {
             .join(".pinned_repo");
         Ok(Self {
             root: LauncherRoot::system(root),
-            path: env::var_os("PATH"),
-            local_app_data: env::var_os("LOCALAPPDATA").map(PathBuf::from),
-            program_files: env::var_os("ProgramFiles").map(PathBuf::from),
-            program_files_x86: env::var_os("ProgramFiles(x86)").map(PathBuf::from),
-            vscode_override: None,
         })
     }
 
     #[cfg(test)]
-    fn for_test(root: PathBuf, vscode: PathBuf) -> Self {
+    fn for_test(root: PathBuf) -> Self {
         Self {
             root: LauncherRoot::for_test(root),
-            path: None,
-            local_app_data: None,
-            program_files: None,
-            program_files_x86: None,
-            vscode_override: Some(vscode),
         }
     }
 
@@ -120,56 +105,9 @@ impl WindowsBackend {
         Ok(LauncherInspection::Managed(ManagedLauncher {
             name: name.to_owned(),
             root: shortcut.root,
+            ide_executable: shortcut.target,
             path,
         }))
-    }
-
-    fn vscode_candidates(&self) -> Vec<PathBuf> {
-        let mut candidates = Vec::new();
-        if let Some(path) = &self.path {
-            for directory in env::split_paths(path) {
-                candidates.push(directory.join("code.exe"));
-                candidates.push(directory.join("code.cmd"));
-            }
-        }
-        for base in [
-            self.local_app_data.as_ref(),
-            self.program_files.as_ref(),
-            self.program_files_x86.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            candidates.push(
-                base.join("Programs")
-                    .join("Microsoft VS Code")
-                    .join("Code.exe"),
-            );
-            candidates.push(base.join("Microsoft VS Code").join("Code.exe"));
-        }
-        candidates
-    }
-}
-
-fn resolve_gui_executable(candidate: &Path) -> Option<PathBuf> {
-    if !candidate.is_file() {
-        return None;
-    }
-    if candidate
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case(OsStr::new("cmd")))
-    {
-        let bin = candidate.parent()?;
-        let installation = bin.parent()?;
-        let gui = installation.join("Code.exe");
-        return gui.is_file().then_some(gui);
-    }
-    if candidate.is_absolute() {
-        Some(candidate.to_owned())
-    } else {
-        env::current_dir()
-            .ok()
-            .map(|directory| directory.join(candidate))
     }
 }
 
@@ -216,7 +154,11 @@ fn quote_single_argument(argument: &OsStr) -> OsString {
     OsString::from_wide(&quoted)
 }
 
-fn create_shell_link(path: &Path, repository: &Repository, vscode: &Path) -> Result<(), AppError> {
+fn create_shell_link(
+    path: &Path,
+    repository: &Repository,
+    ide_executable: &Path,
+) -> Result<(), AppError> {
     let link: IShellLinkW = unsafe {
         CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(|error| {
             AppError::failure(format!(
@@ -225,7 +167,7 @@ fn create_shell_link(path: &Path, repository: &Repository, vscode: &Path) -> Res
         })?
     };
 
-    let target = wide(vscode.as_os_str());
+    let target = wide(ide_executable.as_os_str());
     let arguments = wide(&quote_single_argument(repository.root().as_os_str()));
     let working_directory = wide(repository.root().as_os_str());
     let description = wide(OsStr::new(FORMAT_DESCRIPTION));
@@ -374,25 +316,6 @@ impl LauncherBackend for WindowsBackend {
         &self.root
     }
 
-    fn vscode_executable(&self) -> Result<PathBuf, AppError> {
-        if let Some(vscode) = &self.vscode_override {
-            return vscode.is_file().then_some(vscode.clone()).ok_or_else(|| {
-                AppError::failure(format!(
-                    "injected Visual Studio Code executable '{}' is not a file",
-                    vscode.display()
-                ))
-            });
-        }
-        self.vscode_candidates()
-            .into_iter()
-            .find_map(|candidate| resolve_gui_executable(&candidate))
-            .ok_or_else(|| {
-                AppError::failure(
-                    "could not find the stable Visual Studio Code GUI executable in PATH or a standard installation location",
-                )
-            })
-    }
-
     fn inspect(&self, name: &str) -> Result<LauncherInspection, AppError> {
         let path = self.launcher_path(name);
         let _apartment = ComApartment::initialize()?;
@@ -455,7 +378,11 @@ impl LauncherBackend for WindowsBackend {
         Ok(launchers)
     }
 
-    fn create(&self, repository: &Repository, vscode: &Path) -> Result<CreateOutcome, AppError> {
+    fn create(
+        &self,
+        repository: &Repository,
+        ide_executable: &Path,
+    ) -> Result<CreateOutcome, AppError> {
         let _apartment = ComApartment::initialize()?;
         fs::create_dir_all(self.root.as_path()).map_err(|error| {
             AppError::failure(format!(
@@ -472,7 +399,7 @@ impl LauncherBackend for WindowsBackend {
 
         let temporary = unique_temporary_path(self.root.as_path(), repository.name())?;
         let prepare_result = (|| -> Result<(), AppError> {
-            create_shell_link(&temporary, repository, vscode)?;
+            create_shell_link(&temporary, repository, ide_executable)?;
             match self.inspect_path(repository.name(), temporary.clone())? {
                 LauncherInspection::Managed(launcher)
                     if paths_equivalent(
@@ -553,8 +480,8 @@ impl LauncherBackend for WindowsBackend {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_shell_link, quote_single_argument, read_shell_link, resolve_gui_executable,
-        ComApartment, WindowsBackend, FORMAT_DESCRIPTION,
+        create_shell_link, quote_single_argument, read_shell_link, ComApartment, WindowsBackend,
+        FORMAT_DESCRIPTION,
     };
     use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
     use crate::repo::{Platform, Repository};
@@ -591,33 +518,11 @@ mod tests {
     }
 
     #[test]
-    fn resolves_code_cmd_to_the_stable_gui_executable() {
+    fn uses_injected_launcher_root() {
         let temporary = TempDir::new();
-        let installation = temporary.0.join("Microsoft VS Code");
-        let bin = installation.join("bin");
-        fs::create_dir_all(&bin).expect("bin fixture must be created");
-        let gui = installation.join("Code.exe");
-        fs::write(&gui, "fixture").expect("GUI fixture must be created");
-        let command = bin.join("code.cmd");
-        fs::write(&command, "fixture").expect("command fixture must be created");
-
-        assert_eq!(resolve_gui_executable(&command), Some(gui));
-    }
-
-    #[test]
-    fn uses_injected_code_and_launcher_root() {
-        let temporary = TempDir::new();
-        let code = temporary.0.join("Code.exe");
-        fs::write(&code, "fixture").expect("Code fixture must be created");
         let launcher_root = temporary.0.join("launchers");
-        let backend = WindowsBackend::for_test(launcher_root.clone(), code.clone());
+        let backend = WindowsBackend::for_test(launcher_root.clone());
         assert_eq!(backend.launcher_root().as_path(), launcher_root);
-        assert_eq!(
-            backend
-                .vscode_executable()
-                .expect("injected Code must resolve"),
-            code
-        );
         assert_eq!(
             backend.launcher_path("project"),
             launcher_root.join("project.lnk")
@@ -636,18 +541,18 @@ mod tests {
     fn writes_and_reads_all_managed_shell_link_fields() {
         let _apartment = ComApartment::initialize().expect("COM must initialize");
         let temporary = TempDir::new();
-        let code = temporary.0.join("Visual Studio Code").join("Code.exe");
-        fs::create_dir_all(code.parent().expect("Code fixture must have a parent"))
-            .expect("Code fixture directory must be created");
-        fs::write(&code, "fixture").expect("Code fixture must be created");
+        let ide = temporary.0.join("Cursor 编辑器").join("cursor.exe");
+        fs::create_dir_all(ide.parent().expect("IDE fixture must have a parent"))
+            .expect("IDE fixture directory must be created");
+        fs::write(&ide, "fixture").expect("IDE fixture must be created");
         let root = temporary.0.join("项目 with spaces");
         fs::create_dir_all(&root).expect("repository fixture must be created");
         let repository = Repository::fixture(root.clone(), "项目 with spaces");
         let shortcut = temporary.0.join("project.lnk");
 
-        create_shell_link(&shortcut, &repository, &code).expect("Shell Link must be created");
+        create_shell_link(&shortcut, &repository, &ide).expect("Shell Link must be created");
         let fields = read_shell_link(&shortcut).expect("Shell Link must be readable");
-        assert!(paths_equivalent(&fields.target, &code, Platform::Windows));
+        assert!(paths_equivalent(&fields.target, &ide, Platform::Windows));
         assert_eq!(fields.arguments, quote_single_argument(root.as_os_str()));
         assert!(paths_equivalent(&fields.root, &root, Platform::Windows));
         assert!(paths_equivalent(
@@ -661,24 +566,29 @@ mod tests {
     #[test]
     fn backend_atomically_creates_inspects_and_safely_removes_shell_links() {
         let temporary = TempDir::new();
-        let code = temporary.0.join("Visual Studio Code").join("Code.exe");
-        fs::create_dir_all(code.parent().expect("Code fixture must have a parent"))
-            .expect("Code fixture directory must be created");
-        fs::write(&code, "fixture").expect("Code fixture must be created");
+        let ide = temporary.0.join("Cursor 编辑器").join("cursor.exe");
+        fs::create_dir_all(ide.parent().expect("IDE fixture must have a parent"))
+            .expect("IDE fixture directory must be created");
+        fs::write(&ide, "fixture").expect("IDE fixture must be created");
         let launcher_root = temporary.0.join("launchers");
-        let backend = WindowsBackend::for_test(launcher_root.clone(), code.clone());
+        let backend = WindowsBackend::for_test(launcher_root.clone());
         let repository_root = temporary.0.join("项目 with spaces");
         fs::create_dir_all(&repository_root).expect("repository fixture must be created");
         let repository = Repository::fixture(repository_root, "项目 with spaces");
 
         let launcher = match backend
-            .create(&repository, &code)
+            .create(&repository, &ide)
             .expect("Shell Link creation must succeed")
         {
             CreateOutcome::Created(launcher) => launcher,
             CreateOutcome::Occupied(_) => panic!("isolated launcher slot must be empty"),
         };
         assert_eq!(launcher.path, launcher_root.join("项目 with spaces.lnk"));
+        assert!(paths_equivalent(
+            &launcher.ide_executable,
+            &ide,
+            Platform::Windows
+        ));
         assert_eq!(
             backend
                 .inspect(repository.name())
@@ -706,7 +616,7 @@ mod tests {
         let code = temporary.0.join("Code.exe");
         fs::write(&code, "fixture").expect("Code fixture must be created");
         let launcher_root = temporary.0.join("launchers");
-        let backend = WindowsBackend::for_test(launcher_root.clone(), code.clone());
+        let backend = WindowsBackend::for_test(launcher_root.clone());
         let repository = Repository::fixture(temporary.0.join("project"), "project");
         assert!(backend
             .enumerate()
@@ -735,7 +645,7 @@ mod tests {
         fs::write(&code, "fixture").expect("Code fixture must be created");
         let launcher_root = temporary.0.join("launchers");
         fs::create_dir_all(&launcher_root).expect("launcher root must be created");
-        let backend = WindowsBackend::for_test(launcher_root.clone(), code.clone());
+        let backend = WindowsBackend::for_test(launcher_root.clone());
         let foreign = launcher_root.join("project.lnk");
         fs::write(&foreign, "not a Shell Link").expect("foreign fixture must be created");
 
@@ -760,6 +670,7 @@ mod tests {
         let fake = ManagedLauncher {
             name: "project".to_owned(),
             root: temporary.0.join("project"),
+            ide_executable: code.clone(),
             path: outside,
         };
         assert!(backend.remove(&fake).is_err());
@@ -772,12 +683,12 @@ mod tests {
         fs::create_dir_all(code.parent().expect("Code fixture must have a parent"))
             .expect("Code fixture directory must be created");
         fs::write(&code, "fixture").expect("Code fixture must be created");
-        let backend = WindowsBackend::for_test(temporary.0.join("launchers"), code);
+        let backend = WindowsBackend::for_test(temporary.0.join("launchers"));
         let repository_root = temporary.0.join("工作 project with spaces");
         fs::create_dir_all(&repository_root).expect("repository fixture must be created");
         let repository = Repository::fixture(repository_root.clone(), "工作 project with spaces");
 
-        let launcher = match pin(&backend, &repository, Platform::Windows)
+        let launcher = match pin(&backend, &repository, &code, Platform::Windows)
             .expect("first pin must create a Shell Link")
         {
             PinOutcome::Created(launcher) => launcher,
@@ -789,14 +700,15 @@ mod tests {
             Platform::Windows
         ));
         assert!(matches!(
-            pin(&backend, &repository, Platform::Windows).expect("repeat pin must be idempotent"),
+            pin(&backend, &repository, &code, Platform::Windows)
+                .expect("repeat pin must be idempotent"),
             PinOutcome::AlreadyPinned(_)
         ));
 
         let conflicting_root = temporary.0.join("other").join("工作 project with spaces");
         fs::create_dir_all(&conflicting_root).expect("conflict fixture must be created");
         let conflicting = Repository::fixture(conflicting_root, repository.name());
-        let error = pin(&backend, &conflicting, Platform::Windows)
+        let error = pin(&backend, &conflicting, &code, Platform::Windows)
             .expect_err("same-name different-root pin must conflict");
         assert!(error.to_string().contains("already points to"));
 
