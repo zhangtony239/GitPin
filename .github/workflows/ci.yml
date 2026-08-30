@@ -99,8 +99,13 @@ jobs:
           release="$sandbox/release"
           home="$sandbox/home"
           repository="$sandbox/repositories/project with spaces & shell;\$HOME"
-          mkdir -p "$release" "$home/Applications/Visual Studio Code.app" "$repository"
+          ide="$sandbox/Custom IDE/custom-ide"
+          mkdir -p "$release" "$(dirname "$ide")" "$repository"
           canonical_repository="$(cd "$repository" && pwd -P)"
+
+          printf '#!/bin/sh\nexit 0\n' > "$ide"
+          chmod 755 "$ide"
+          canonical_ide="$(cd "$(dirname "$ide")" && pwd -P)/$(basename "$ide")"
 
           cp target/release/git-pin target/release/git-unpin "$release/"
           chmod 755 "$release/git-pin" "$release/git-unpin"
@@ -112,7 +117,7 @@ jobs:
           export HOME="$home"
           export PATH="$release:$PATH"
 
-          git -C "$repository" pin
+          git -C "$repository" -c "pin.ide=$canonical_ide" pin
           bundle="$home/Applications/Git Pin/$(basename "$repository").app"
           embedded="$bundle/Contents/MacOS/git-pin-launcher"
           test -f "$bundle/Contents/Info.plist"
@@ -121,8 +126,9 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" | grep -Fx 'git-pin-launcher'
           /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Format-Version' "$bundle/Contents/Info.plist" | grep -Fx '1'
           /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Repository-Root' "$bundle/Contents/Info.plist" | grep -Fx "$canonical_repository"
+          /usr/libexec/PlistBuddy -c 'Print :X-Git-Pin-Ide-Executable' "$bundle/Contents/Info.plist" | grep -Fx "$canonical_ide"
 
-          git -C "$repository" pin | grep -F 'already pinned'
+          git -C "$repository" -c "pin.ide=$canonical_ide" pin | grep -F 'already pinned'
           git -C "$repository" unpin
           test ! -e "$bundle"
           test -z "$(find "$home/Applications/Git Pin" -mindepth 1 -maxdepth 1 -print -quit)"
