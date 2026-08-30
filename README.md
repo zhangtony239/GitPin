@@ -167,6 +167,10 @@ run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
 `cargo test --locked --all-targets` locally; local results do not replace the
 required CI checks.
 
+## Acknowledgements
+
+Thanks to the [LINUX DO](https://linux.do/) community for the support, feedback, and encouragement during the development and sharing of GitPin.
+
 ## License
 
 Git Pin is distributed under the MIT License. See `LICENSE`.
