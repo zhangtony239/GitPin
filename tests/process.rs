@@ -486,6 +486,21 @@ fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
     initialize_repository(&repository);
     let canonical_repository = fs::canonicalize(&repository)
         .expect("repository path must have an absolute canonical form");
+    let captured_arguments = environment.root.0.join("captured-ide-arguments.txt");
+    let custom_ide = environment.root.0.join("Custom IDE").join("custom-ide");
+    fs::create_dir_all(custom_ide.parent().expect("custom IDE must have a parent"))
+        .expect("custom IDE directory must be created");
+    fs::write(
+        &custom_ide,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+            captured_arguments.display()
+        ),
+    )
+    .expect("custom IDE fixture must be written");
+    fs::set_permissions(&custom_ide, fs::Permissions::from_mode(0o755))
+        .expect("custom IDE fixture must be executable");
+    let custom_ide = fs::canonicalize(custom_ide).expect("custom IDE must canonicalize");
     let release_path = env::join_paths(
         std::iter::once(release.clone()).chain(env::split_paths(&environment.path)),
     )
@@ -495,6 +510,8 @@ fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
         .command("git")
         .env("PATH", &release_path)
         .current_dir(&repository)
+        .arg("-c")
+        .arg(format!("pin.ide={}", custom_ide.display()))
         .arg("pin"));
     assert_success(&output);
     let bundle = environment.launcher("project with spaces & shell;$HOME");
@@ -508,30 +525,12 @@ fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {
         fs::read(&release_pin).expect("staged git-pin must be readable")
     );
 
-    let fake_open = environment.root.0.join("fake-open/open");
-    fs::create_dir_all(fake_open.parent().expect("fake open must have a parent"))
-        .expect("fake open directory must be created");
-    fs::write(
-        &fake_open,
-        "#!/bin/sh\nscript_dir=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\nprintf '%s\\n' \"$@\" > \"$script_dir/arguments.txt\"\n",
-    )
-    .expect("fake open must be written");
-    fs::set_permissions(&fake_open, fs::Permissions::from_mode(0o755))
-        .expect("fake open must be executable");
-    git_pin::macos_launcher::run_with(&embedded, &fake_open)
-        .expect("embedded entry must read and launch the managed root");
+    let missing_legacy_open = environment.root.0.join("missing-legacy-open");
+    git_pin::macos_launcher::run_with(&embedded, &missing_legacy_open)
+        .expect("embedded entry must directly launch the frozen custom IDE");
     assert_eq!(
-        fs::read_to_string(
-            fake_open
-                .parent()
-                .expect("fake open must have a parent")
-                .join("arguments.txt")
-        )
-        .expect("captured open arguments must be readable"),
-        format!(
-            "-a\nVisual Studio Code\n--args\n{}\n",
-            canonical_repository.display()
-        )
+        fs::read_to_string(captured_arguments).expect("captured IDE arguments must be readable"),
+        format!("{}\n", canonical_repository.display())
     );
 
     let output = run(environment
