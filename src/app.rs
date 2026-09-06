@@ -293,7 +293,7 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
                 .unwrap_or(&current_directory);
             let repository = Repository::discover(input, platform)?;
             let configured_ide = read_ide()?;
-            let ide_executable = resolve_ide(&configured_ide)?;
+            let ide_executable = resolve_ide(configured_ide.value())?;
             match pin(&backend, &repository, &ide_executable, platform)? {
                 PinOutcome::Created(launcher) => println!(
                     "pinned '{}' at '{}'",

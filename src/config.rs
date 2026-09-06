@@ -13,13 +13,29 @@ use crate::error::AppError;
 pub const IDE_CONFIG_KEY: &str = "pin.ide";
 pub const DEFAULT_IDE: &str = "code";
 
+/// The configured IDE value together with whether Git supplied it explicitly.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum IdeSelection {
+    DefaultCode,
+    Configured(String),
+}
+
+impl IdeSelection {
+    pub fn value(&self) -> &str {
+        match self {
+            Self::DefaultCode => DEFAULT_IDE,
+            Self::Configured(value) => value,
+        }
+    }
+}
+
 /// Reads the effective IDE value using Git's own configuration machinery.
-pub fn read_ide() -> Result<String, AppError> {
+pub fn read_ide() -> Result<IdeSelection, AppError> {
     let mut command = Command::new("git");
     read_ide_with(&mut command)
 }
 
-fn read_ide_with(command: &mut Command) -> Result<String, AppError> {
+fn read_ide_with(command: &mut Command) -> Result<IdeSelection, AppError> {
     let output = command
         .args(["config", "--get", IDE_CONFIG_KEY])
         .output()
@@ -35,11 +51,13 @@ fn read_ide_with(command: &mut Command) -> Result<String, AppError> {
                 "Git configuration key '{IDE_CONFIG_KEY}' is not valid UTF-8: {error}"
             ))
         })?;
-        return Ok(value.trim_end_matches(['\r', '\n']).to_owned());
+        return Ok(IdeSelection::Configured(
+            value.trim_end_matches(['\r', '\n']).to_owned(),
+        ));
     }
 
     if output.status.code() == Some(1) && output.stderr.is_empty() {
-        return Ok(DEFAULT_IDE.to_owned());
+        return Ok(IdeSelection::DefaultCode);
     }
 
     let diagnostic = String::from_utf8_lossy(&output.stderr);
@@ -202,7 +220,7 @@ fn invalid_ide(value: &str, reason: impl std::fmt::Display) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_ide_with, resolve_ide, shell_compatible_absolute, DEFAULT_IDE, IDE_CONFIG_KEY,
+        read_ide_with, resolve_ide, shell_compatible_absolute, IdeSelection, IDE_CONFIG_KEY,
     };
     use std::env;
     use std::fs;
@@ -277,7 +295,7 @@ mod tests {
 
         assert_eq!(
             read_ide_with(&mut isolated_git(&repository, &temporary)).unwrap(),
-            DEFAULT_IDE
+            IdeSelection::DefaultCode
         );
 
         git(
@@ -303,7 +321,7 @@ mod tests {
         git(&repository, &["config", IDE_CONFIG_KEY, "repository-ide"]);
         assert_eq!(
             read_ide_with(&mut isolated_git(&repository, &temporary)).unwrap(),
-            "repository-ide"
+            IdeSelection::Configured("repository-ide".to_owned())
         );
 
         let mut command_line = isolated_git(&repository, &temporary);
@@ -313,8 +331,26 @@ mod tests {
             .env("GIT_CONFIG_VALUE_0", "command-line-ide");
         assert_eq!(
             read_ide_with(&mut command_line).unwrap(),
-            "command-line-ide"
+            IdeSelection::Configured("command-line-ide".to_owned())
         );
+    }
+
+    #[test]
+    fn reports_git_configuration_read_failures() {
+        let temporary = TempDir::new();
+        let repository = temporary.0.join("repository");
+        fs::create_dir_all(&repository).unwrap();
+        git(&repository, &["init"]);
+
+        let invalid_config = temporary.0.join("config-directory");
+        fs::create_dir_all(&invalid_config).unwrap();
+        let mut command = isolated_git(&repository, &temporary);
+        command.env("GIT_CONFIG_SYSTEM", invalid_config);
+
+        let error = read_ide_with(&mut command).expect_err("invalid Git config must fail");
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains(IDE_CONFIG_KEY));
+        assert!(diagnostic.contains("could not read Git configuration key"));
     }
 
     #[test]
