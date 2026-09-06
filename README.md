@@ -90,6 +90,23 @@ git unpin path/to/repository
 git pin path/to/repository
 ```
 
+On Windows, v1.2.1 resolves the unconfigured default `code` through the
+`code.cmd` selected by `PATH`, then freezes the adjacent Visual Studio Code GUI
+`Code.exe` into the Start Menu shortcut. This prevents the extra Command Prompt
+window that affected default Code launchers created by v1.2. If the GUI
+executable cannot be verified, pinning fails instead of creating a shortcut to
+a `.cmd` or `.bat` script. An explicit `pin.ide=code` retains the normal atomic
+executable-resolution behavior; unset `pin.ide` or configure an absolute
+`Code.exe` path when the GUI behavior is required.
+
+Existing v1.2 launchers that already target `code.cmd` are deliberately not
+rewritten by a repeated pin. Recreate each affected entry after upgrading:
+
+```text
+git unpin path/to/repository
+git pin path/to/repository
+```
+
 ## Usage
 
 From a repository or any directory inside its working tree:

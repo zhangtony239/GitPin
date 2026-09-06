@@ -67,6 +67,15 @@ git unpin path/to/repository
 git pin path/to/repository
 ```
 
+在 Windows 上，v1.2.1 会通过 `PATH` 选中的 `code.cmd` 解析未配置时的默认 `code`，再把相邻的 Visual Studio Code GUI `Code.exe` 固化到开始菜单快捷方式中。这样可避免 v1.2 创建的默认 Code 入口附带额外命令提示符窗口。若无法验证 GUI executable，pin 会明确失败，而不会创建指向 `.cmd` 或 `.bat` 脚本的快捷方式。显式设置 `pin.ide=code` 时仍保留普通的原子 executable 解析语义；需要 GUI 行为时，请取消设置 `pin.ide`，或直接配置 `Code.exe` 绝对路径。
+
+已经指向 `code.cmd` 的 v1.2 启动器不会在重复 pin 时被暗中改写。升级后需重新创建每个受影响的入口：
+
+```text
+git unpin path/to/repository
+git pin path/to/repository
+```
+
 ## 用法
 
 在仓库或其工作树中的任意目录运行：
