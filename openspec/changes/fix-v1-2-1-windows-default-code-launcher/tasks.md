@@ -17,6 +17,6 @@
 
 ## 4. v1.2.1 发布收尾
 
-- [ ] 4.1 将 crate/package 版本与 lockfile 更新为 `1.2.1`，检查发布 workflow 继续从唯一版本源派生 tag 和产物名称
+- [x] 4.1 将 crate/package 版本与 lockfile 更新为 `1.2.1`，检查发布 workflow 继续从唯一版本源派生 tag 和产物名称
 - [ ] 4.2 更新中英文 README，记录 Windows 默认 Code 不再弹出命令窗口，并说明受影响的 v1.2 入口需执行 unpin 后重新 pin
 - [ ] 4.3 运行格式化、测试、clippy 与 OpenSpec 严格校验，并在 Windows 上手工 smoke test 开始菜单入口直接打开 repository 且无命令提示符窗口
