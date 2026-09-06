@@ -1,13 +1,13 @@
 ## 1. 配置选择边界
 
 - [x] 1.1 将 IDE 配置读取结果扩展为可区分“未配置时的默认 `code`”与显式 `pin.ide` 值的类型，并更新读取优先级、缺失值和错误测试
-- [ ] 1.2 调整 Pin 应用编排，使 Windows 默认选择进入专用 GUI 解析，而显式配置及非 Windows 平台继续走现有原子 executable 解析
+- [x] 1.2 调整 Pin 应用编排，使 Windows 默认选择进入专用 GUI 解析，而显式配置及非 Windows 平台继续走现有原子 executable 解析
 
 ## 2. Windows 默认 VS Code 解析
 
-- [ ] 2.1 实现 Windows 默认 `code` 解析：从 PATH 选中的 `code.cmd` 标准布局推导并验证相邻 `Code.exe`，同时支持 PATH 直接提供有效 GUI executable
-- [ ] 2.2 对脚本 shim 缺少或对应 GUI executable 无效的情况返回带 shim/候选上下文的诊断，且禁止回退为 `.cmd`、`.bat` 或 `cmd.exe /c`
-- [ ] 2.3 增加 Windows 解析 fixture 测试，覆盖标准安装布局、缺失 GUI、直接 `.exe`、路径空格/非 ASCII 及显式 `pin.ide=code` 不被默认适配重写
+- [x] 2.1 实现 Windows 默认 `code` 解析：从 PATH 选中的 `code.cmd` 标准布局推导并验证相邻 `Code.exe`，同时支持 PATH 直接提供有效 GUI executable
+- [x] 2.2 对脚本 shim 缺少或对应 GUI executable 无效的情况返回带 shim/候选上下文的诊断，且禁止回退为 `.cmd`、`.bat` 或 `cmd.exe /c`
+- [x] 2.3 增加 Windows 解析 fixture 测试，覆盖标准安装布局、缺失 GUI、直接 `.exe`、路径空格/非 ASCII 及显式 `pin.ide=code` 不被默认适配重写
 
 ## 3. Windows launcher 回归覆盖
 

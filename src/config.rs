@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::AppError;
+use crate::repo::Platform;
 
 pub const IDE_CONFIG_KEY: &str = "pin.ide";
 pub const DEFAULT_IDE: &str = "code";
@@ -26,6 +27,27 @@ impl IdeSelection {
             Self::DefaultCode => DEFAULT_IDE,
             Self::Configured(value) => value,
         }
+    }
+}
+
+/// Resolves an IDE selection while preserving the Windows default-Code policy.
+pub fn resolve_ide_selection(
+    selection: &IdeSelection,
+    platform: Platform,
+) -> Result<PathBuf, AppError> {
+    let path = env::var_os("PATH");
+    resolve_ide_selection_with_path(selection, platform, path.as_deref())
+}
+
+fn resolve_ide_selection_with_path(
+    selection: &IdeSelection,
+    platform: Platform,
+    path: Option<&OsStr>,
+) -> Result<PathBuf, AppError> {
+    match (selection, platform) {
+        #[cfg(windows)]
+        (IdeSelection::DefaultCode, Platform::Windows) => resolve_windows_default_code(path),
+        _ => resolve_ide_with_path(selection.value(), path),
     }
 }
 
@@ -70,6 +92,11 @@ fn read_ide_with(command: &mut Command) -> Result<IdeSelection, AppError> {
 
 /// Resolves one atomic configured value to an absolute executable file.
 pub fn resolve_ide(value: &str) -> Result<PathBuf, AppError> {
+    let path = env::var_os("PATH");
+    resolve_ide_with_path(value, path.as_deref())
+}
+
+fn resolve_ide_with_path(value: &str, path: Option<&OsStr>) -> Result<PathBuf, AppError> {
     if value.is_empty() {
         return Err(invalid_ide(value, "the value is empty"));
     }
@@ -88,7 +115,7 @@ pub fn resolve_ide(value: &str) -> Result<PathBuf, AppError> {
                 .join(configured)
         }
     } else {
-        find_on_path(configured.as_os_str()).ok_or_else(|| {
+        find_on_path(configured.as_os_str(), path).ok_or_else(|| {
             invalid_ide(
                 value,
                 "no executable with that exact name was found in PATH; values are not split into a command and arguments",
@@ -97,6 +124,93 @@ pub fn resolve_ide(value: &str) -> Result<PathBuf, AppError> {
     };
 
     validate_and_absolute(value, &candidate)
+}
+
+#[cfg(windows)]
+fn resolve_windows_default_code(path: Option<&OsStr>) -> Result<PathBuf, AppError> {
+    let selected = find_on_path(OsStr::new(DEFAULT_IDE), path).ok_or_else(|| {
+        default_code_error("no CLI shim or GUI executable named 'code' was found in PATH")
+    })?;
+    let extension = selected
+        .extension()
+        .and_then(OsStr::to_str)
+        .unwrap_or_default();
+
+    if extension.eq_ignore_ascii_case("exe") {
+        return validate_windows_default_gui(&selected, &selected);
+    }
+
+    if extension.eq_ignore_ascii_case("cmd") {
+        let install_directory = selected.parent().and_then(Path::parent);
+        let candidate = install_directory
+            .map(|directory| directory.join("Code.exe"))
+            .unwrap_or_else(|| PathBuf::from("Code.exe"));
+        let is_standard_bin = selected
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(OsStr::to_str)
+            .map(|name| name.eq_ignore_ascii_case("bin"))
+            .unwrap_or(false);
+        if !is_standard_bin {
+            return Err(default_code_error(format!(
+                "PATH selected script shim '{}', but it is not in the supported 'bin' layout; GUI candidate would be '{}'",
+                selected.display(),
+                candidate.display()
+            )));
+        }
+        return validate_windows_default_gui(&selected, &candidate);
+    }
+
+    Err(default_code_error(format!(
+        "PATH selected unsupported executable '{}'; expected a direct .exe or a standard bin\\code.cmd shim, and script fallback is disabled",
+        selected.display()
+    )))
+}
+
+#[cfg(windows)]
+fn validate_windows_default_gui(shim: &Path, candidate: &Path) -> Result<PathBuf, AppError> {
+    let extension_is_exe = candidate
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(|extension| extension.eq_ignore_ascii_case("exe"))
+        .unwrap_or(false);
+    if !extension_is_exe {
+        return Err(default_code_error(format!(
+            "PATH selection '{}' produced GUI candidate '{}', which is not an .exe",
+            shim.display(),
+            candidate.display()
+        )));
+    }
+
+    let metadata = fs::metadata(candidate).map_err(|error| {
+        default_code_error(format!(
+            "PATH selection '{}' produced unavailable GUI candidate '{}': {error}",
+            shim.display(),
+            candidate.display()
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(default_code_error(format!(
+            "PATH selection '{}' produced GUI candidate '{}', which is not a file",
+            shim.display(),
+            candidate.display()
+        )));
+    }
+    let canonical = fs::canonicalize(candidate).map_err(|error| {
+        default_code_error(format!(
+            "could not make GUI candidate '{}' absolute for PATH selection '{}': {error}",
+            candidate.display(),
+            shim.display()
+        ))
+    })?;
+    Ok(shell_compatible_absolute(canonical))
+}
+
+#[cfg(windows)]
+fn default_code_error(reason: impl std::fmt::Display) -> AppError {
+    AppError::failure(format!(
+        "could not resolve Windows GUI executable for default IDE '{DEFAULT_IDE}': {reason}"
+    ))
 }
 
 fn has_directory_component(path: &Path) -> bool {
@@ -151,8 +265,8 @@ fn shell_compatible_absolute(path: PathBuf) -> PathBuf {
     path
 }
 
-fn find_on_path(name: &OsStr) -> Option<PathBuf> {
-    let path = env::var_os("PATH")?;
+fn find_on_path(name: &OsStr, path: Option<&OsStr>) -> Option<PathBuf> {
+    let path = path?;
     for directory in env::split_paths(&path) {
         for candidate in executable_candidates(&directory, name) {
             if fs::metadata(&candidate)
@@ -220,8 +334,10 @@ fn invalid_ide(value: &str, reason: impl std::fmt::Display) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_ide_with, resolve_ide, shell_compatible_absolute, IdeSelection, IDE_CONFIG_KEY,
+        read_ide_with, resolve_ide, resolve_ide_selection_with_path, shell_compatible_absolute,
+        IdeSelection, IDE_CONFIG_KEY,
     };
+    use crate::repo::Platform;
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -406,5 +522,110 @@ mod tests {
         assert!(resolve_ide(temporary.0.to_str().unwrap()).is_err());
         assert!(resolve_ide("cursor --reuse-window").is_err());
         assert!(resolve_ide("cursor && malicious").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_default_code_resolves_standard_shim_to_gui_with_unicode_and_spaces() {
+        let temporary = TempDir::new();
+        let install = temporary.0.join("Microsoft VS Cøde");
+        let bin = install.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let shim = bin.join("code.cmd");
+        fs::write(&shim, "@echo off\r\n").unwrap();
+        let gui = install.join("Code.exe");
+        make_executable(&gui);
+
+        assert_eq!(
+            resolve_ide_selection_with_path(
+                &IdeSelection::DefaultCode,
+                Platform::Windows,
+                Some(bin.as_os_str()),
+            )
+            .unwrap(),
+            shell_compatible_absolute(fs::canonicalize(gui).unwrap())
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_default_code_accepts_a_direct_gui_executable() {
+        let temporary = TempDir::new();
+        let gui = temporary.0.join("code.exe");
+        make_executable(&gui);
+
+        assert_eq!(
+            resolve_ide_selection_with_path(
+                &IdeSelection::DefaultCode,
+                Platform::Windows,
+                Some(temporary.0.as_os_str()),
+            )
+            .unwrap(),
+            shell_compatible_absolute(fs::canonicalize(gui).unwrap())
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_default_code_rejects_missing_gui_with_shim_and_candidate_context() {
+        let temporary = TempDir::new();
+        let bin = temporary.0.join("install").join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let shim = bin.join("code.cmd");
+        fs::write(&shim, "@echo off\r\n").unwrap();
+        let candidate = temporary.0.join("install").join("Code.exe");
+
+        let error = resolve_ide_selection_with_path(
+            &IdeSelection::DefaultCode,
+            Platform::Windows,
+            Some(bin.as_os_str()),
+        )
+        .expect_err("missing GUI executable must fail closed");
+        let diagnostic = error.to_string();
+        let lowercase_diagnostic = diagnostic.to_lowercase();
+        assert!(lowercase_diagnostic.contains(&shim.display().to_string().to_lowercase()));
+        assert!(lowercase_diagnostic.contains(&candidate.display().to_string().to_lowercase()));
+        assert!(diagnostic.contains("default IDE 'code'"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_default_code_rejects_batch_fallback() {
+        let temporary = TempDir::new();
+        let shim = temporary.0.join("code.bat");
+        fs::write(&shim, "@echo off\r\n").unwrap();
+
+        let error = resolve_ide_selection_with_path(
+            &IdeSelection::DefaultCode,
+            Platform::Windows,
+            Some(temporary.0.as_os_str()),
+        )
+        .expect_err("batch fallback must fail closed");
+        let diagnostic = error.to_string().to_lowercase();
+        assert!(diagnostic.contains("code.bat"));
+        assert!(diagnostic.contains("script fallback is disabled"));
+        assert!(!diagnostic.contains("cmd.exe /c"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn explicitly_configured_code_keeps_atomic_path_resolution() {
+        let temporary = TempDir::new();
+        let install = temporary.0.join("install");
+        let bin = install.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let shim = bin.join("code.cmd");
+        fs::write(&shim, "@echo off\r\n").unwrap();
+        make_executable(&install.join("Code.exe"));
+
+        assert_eq!(
+            resolve_ide_selection_with_path(
+                &IdeSelection::Configured("code".to_owned()),
+                Platform::Windows,
+                Some(bin.as_os_str()),
+            )
+            .unwrap(),
+            shell_compatible_absolute(fs::canonicalize(shim).unwrap())
+        );
     }
 }

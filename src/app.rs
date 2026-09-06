@@ -4,7 +4,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use crate::cli::{Invocation, PIN_HELP};
-use crate::config::{read_ide, resolve_ide};
+use crate::config::{read_ide, resolve_ide_selection};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
@@ -293,7 +293,7 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
                 .unwrap_or(&current_directory);
             let repository = Repository::discover(input, platform)?;
             let configured_ide = read_ide()?;
-            let ide_executable = resolve_ide(configured_ide.value())?;
+            let ide_executable = resolve_ide_selection(&configured_ide, platform)?;
             match pin(&backend, &repository, &ide_executable, platform)? {
                 PinOutcome::Created(launcher) => println!(
                     "pinned '{}' at '{}'",
