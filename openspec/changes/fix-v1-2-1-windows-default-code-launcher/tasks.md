@@ -11,9 +11,9 @@
 
 ## 3. Windows launcher 回归覆盖
 
-- [ ] 3.1 扩展 Windows 原生 Shell Link 测试，使用 `bin\code.cmd` 加 `Code.exe` 布局完成 pin，并断言读回 TargetPath 为 GUI `.exe`、图标来自 GUI executable、root 参数与工作目录准确
-- [ ] 3.2 增加既有 `code.cmd` 受管 launcher 的重复 pin、inspect、list 和 unpin 兼容测试，确认 v1.2.1 不隐式迁移但仍可安全管理旧入口
-- [ ] 3.3 验证默认 GUI 候选解析失败时不提交最终或临时 launcher，并保持现有冲突与原子创建语义
+- [x] 3.1 扩展 Windows 原生 Shell Link 测试，使用 `bin\code.cmd` 加 `Code.exe` 布局完成 pin，并断言读回 TargetPath 为 GUI `.exe`、图标来自 GUI executable、root 参数与工作目录准确
+- [x] 3.2 增加既有 `code.cmd` 受管 launcher 的重复 pin、inspect、list 和 unpin 兼容测试，确认 v1.2.1 不隐式迁移但仍可安全管理旧入口
+- [x] 3.3 验证默认 GUI 候选解析失败时不提交最终或临时 launcher，并保持现有冲突与原子创建语义
 
 ## 4. v1.2.1 发布收尾
 

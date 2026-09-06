@@ -443,6 +443,31 @@ fn repository_errors_include_context_and_do_not_create_launchers() {
     );
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn missing_default_code_gui_fails_without_launcher_residue() {
+    let environment = ProcessEnvironment::new("missing-code-gui");
+    let repository = environment.root.0.join("repositories/missing-code-gui");
+    initialize_repository(&repository);
+    let broken_bin = environment.root.0.join("Broken VS Code/bin");
+    fs::create_dir_all(&broken_bin).expect("broken Code bin fixture must be created");
+    let shim = broken_bin.join("code.cmd");
+    fs::write(&shim, "@echo off\r\n").expect("shim fixture must be written");
+    let path =
+        env::join_paths(std::iter::once(broken_bin).chain(env::split_paths(&environment.path)))
+            .expect("test PATH must be valid");
+
+    let output = run(environment
+        .command(git_pin())
+        .env("PATH", path)
+        .arg(&repository));
+    assert_failure_with(&output, "could not resolve Windows GUI executable");
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(stderr.contains("code.cmd"));
+    assert!(stderr.contains("code.exe"));
+    environment.assert_no_launcher_residue();
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn macos_two_binary_release_is_self_contained_and_preserves_public_commands() {

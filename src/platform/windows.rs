@@ -484,9 +484,10 @@ mod tests {
         FORMAT_DESCRIPTION,
     };
     use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
-    use crate::repo::{Platform, Repository};
+    use crate::repo::{Platform, Repository, RootStatus};
     use crate::{
-        app::{pin, unpin, PinOutcome, UnpinOutcome, UnpinTarget},
+        app::{list, pin, unpin, PinOutcome, UnpinOutcome, UnpinTarget},
+        config::{resolve_ide_selection_with_path, IdeSelection},
         repo::paths_equivalent,
     };
     use std::ffi::OsStr;
@@ -728,5 +729,135 @@ mod tests {
                 .expect("removed launcher must inspect cleanly"),
             LauncherInspection::Missing
         );
+    }
+
+    #[test]
+    fn default_code_layout_pins_a_gui_shell_link_with_exact_fields() {
+        let temporary = TempDir::new();
+        let install = temporary.0.join("Microsoft VS Cøde");
+        let bin = install.join("bin");
+        fs::create_dir_all(&bin).expect("Code bin fixture must be created");
+        fs::write(bin.join("code.cmd"), "@echo off\r\n").expect("shim fixture must be written");
+        let gui = install.join("Code.exe");
+        fs::write(&gui, "fixture").expect("GUI fixture must be written");
+        let resolved = resolve_ide_selection_with_path(
+            &IdeSelection::DefaultCode,
+            Platform::Windows,
+            Some(bin.as_os_str()),
+        )
+        .expect("default Code must resolve to its adjacent GUI executable");
+
+        let backend = WindowsBackend::for_test(temporary.0.join("launchers"));
+        let repository_root = temporary.0.join("工作 project with spaces");
+        fs::create_dir_all(&repository_root).expect("repository fixture must be created");
+        let repository = Repository::fixture(repository_root.clone(), "工作 project with spaces");
+        let launcher = match pin(&backend, &repository, &resolved, Platform::Windows)
+            .expect("pin must create a GUI Shell Link")
+        {
+            PinOutcome::Created(launcher) => launcher,
+            PinOutcome::AlreadyPinned(_) => panic!("isolated slot must initially be empty"),
+        };
+
+        let _apartment = ComApartment::initialize().expect("COM must initialize");
+        let fields = read_shell_link(&launcher.path).expect("Shell Link must be readable");
+        assert!(paths_equivalent(&fields.target, &gui, Platform::Windows));
+        assert!(fields
+            .target
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe")));
+        assert_eq!(
+            fields.arguments,
+            quote_single_argument(repository_root.as_os_str())
+        );
+        assert!(paths_equivalent(
+            &fields.root,
+            &repository_root,
+            Platform::Windows
+        ));
+        assert!(paths_equivalent(
+            &fields.icon,
+            &fields.target,
+            Platform::Windows
+        ));
+    }
+
+    #[test]
+    fn legacy_code_cmd_launcher_remains_idempotent_listable_and_removable() {
+        let temporary = TempDir::new();
+        let repository_root = temporary.0.join("legacy-project");
+        fs::create_dir_all(&repository_root).expect("repository fixture must be created");
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repository_root)
+            .arg("init")
+            .status()
+            .expect("Git must run");
+        assert!(status.success());
+        let repository = Repository::fixture(repository_root.clone(), "legacy-project");
+
+        let install = temporary.0.join("Microsoft VS Code");
+        let bin = install.join("bin");
+        fs::create_dir_all(&bin).expect("Code bin fixture must be created");
+        let legacy_shim = bin.join("code.cmd");
+        fs::write(&legacy_shim, "@echo off\r\n").expect("legacy shim must be written");
+        let gui = install.join("Code.exe");
+        fs::write(&gui, "fixture").expect("GUI fixture must be written");
+
+        let backend = WindowsBackend::for_test(temporary.0.join("launchers"));
+        fs::create_dir_all(backend.launcher_root().as_path())
+            .expect("launcher root must be created");
+        let launcher_path = backend.launcher_path(repository.name());
+        {
+            let _apartment = ComApartment::initialize().expect("COM must initialize");
+            create_shell_link(&launcher_path, &repository, &legacy_shim)
+                .expect("legacy Shell Link must be created");
+        }
+
+        let inspected = match backend
+            .inspect(repository.name())
+            .expect("inspect must succeed")
+        {
+            LauncherInspection::Managed(launcher) => launcher,
+            inspection => panic!("legacy launcher must remain managed: {inspection:?}"),
+        };
+        assert!(paths_equivalent(
+            &inspected.ide_executable,
+            &legacy_shim,
+            Platform::Windows
+        ));
+        assert_eq!(
+            pin(&backend, &repository, &gui, Platform::Windows)
+                .expect("repeat pin must remain idempotent"),
+            PinOutcome::AlreadyPinned(inspected.clone())
+        );
+        let repeated = match backend
+            .inspect(repository.name())
+            .expect("inspect must succeed")
+        {
+            LauncherInspection::Managed(launcher) => launcher,
+            inspection => panic!("legacy launcher must remain managed: {inspection:?}"),
+        };
+        assert!(paths_equivalent(
+            &repeated.ide_executable,
+            &legacy_shim,
+            Platform::Windows
+        ));
+
+        let report = list(&backend, Platform::Windows).expect("list must succeed");
+        assert!(report.errors.is_empty());
+        assert_eq!(report.records.len(), 1);
+        assert_eq!(report.records[0].launcher, inspected);
+        assert_eq!(report.records[0].status, RootStatus::Valid);
+
+        assert!(matches!(
+            unpin(
+                &backend,
+                &UnpinTarget::Repository(repository),
+                Platform::Windows,
+            )
+            .expect("legacy launcher must unpin safely"),
+            UnpinOutcome::Removed(_)
+        ));
+        assert!(!launcher_path.exists());
     }
 }

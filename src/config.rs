@@ -39,7 +39,7 @@ pub fn resolve_ide_selection(
     resolve_ide_selection_with_path(selection, platform, path.as_deref())
 }
 
-fn resolve_ide_selection_with_path(
+pub(crate) fn resolve_ide_selection_with_path(
     selection: &IdeSelection,
     platform: Platform,
     path: Option<&OsStr>,
