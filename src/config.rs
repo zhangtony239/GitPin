@@ -334,9 +334,11 @@ fn invalid_ide(value: &str, reason: impl std::fmt::Display) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_ide_with, resolve_ide, resolve_ide_selection_with_path, shell_compatible_absolute,
-        IdeSelection, IDE_CONFIG_KEY,
+        read_ide_with, resolve_ide, shell_compatible_absolute, IdeSelection, IDE_CONFIG_KEY,
     };
+    #[cfg(windows)]
+    use super::resolve_ide_selection_with_path;
+    #[cfg(windows)]
     use crate::repo::Platform;
     use std::env;
     use std::fs;
