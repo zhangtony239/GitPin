@@ -14,9 +14,9 @@
 
 ## 3. 渲染单元测试
 
-- [ ] 3.1 在 [`src/app.rs`](src/app.rs:366) 的测试模块中新增单元测试：构造长度差异明显的多个 `LauncherRecord`（例如 3 字符与 20 字符的 name），断言渲染结果中每行 root 列的起始字节位置一致，确认 `cargo test` 通过
-- [ ] 3.2 新增单元测试：构造含非 ASCII 字符（如中文）的 name 与 root，断言后续列按显示宽度对齐而非字节数，确认 `cargo test` 通过
-- [ ] 3.3 新增单元测试：混合有效项与 `RootStatus::Invalid(reason)` 项，断言两类行的 name 列与 root 列对齐一致且 `invalid: <reason>` 完整出现在状态列，确认 `cargo test` 通过
+- [x] 3.1 在 [`src/app.rs`](src/app.rs:366) 的测试模块中新增单元测试：构造长度差异明显的多个 `LauncherRecord`（例如 3 字符与 20 字符的 name），断言渲染结果中每行 root 列的起始字节位置一致，确认 `cargo test` 通过
+- [x] 3.2 新增单元测试：构造含非 ASCII 字符（如中文）的 name 与 root，断言后续列按显示宽度对齐而非字节数，确认 `cargo test` 通过
+- [x] 3.3 新增单元测试：混合有效项与 `RootStatus::Invalid(reason)` 项，断言两类行的 name 列与 root 列对齐一致且 `invalid: <reason>` 完整出现在状态列，确认 `cargo test` 通过
 
 ## 4. 进程级测试与文档
 

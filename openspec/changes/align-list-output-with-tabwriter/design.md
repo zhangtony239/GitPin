@@ -45,9 +45,9 @@
 
 `TabWriter` 必须在函数返回前 `flush()`，否则缓冲内容不会写出；`flush` 的 I/O 错误需要映射为 `AppError`，与现有错误处理风格一致（`AppError::failure`）。
 
-### 决策 3：列间使用 `\t` 作为 tabwriter 的分隔符，最小宽度与 padding 取默认值
+### 决策 3：列间使用 `\t` 作为 tabwriter 的分隔符，最小宽度与 padding 取库默认值
 
-`TabWriter::new(writer)` 的默认 `minwidth = 0`、`padding = 1`，即列间恰好一个空格。这既保证对齐，又不会让输出比现在明显变宽。不启用 `ansi_formatting` feature，避免引入 `regex`/`lazy_static` 等额外依赖。
+`TabWriter::new(writer)` 的默认值是 `minwidth = 2`、`padding = 2`（实现时已核对 tabwriter 1.4.1 源码，初稿误记为 `0`/`1`）。即每列至少 2 个显示列宽，列间固定 2 个空格。取默认值而不显式调参，是为了少一个可漂移的旋钮；2 个空格也比原先单个制表位更易读，且不会让输出明显变宽。不启用 `ansi_formatting` feature，避免引入 `regex`/`lazy_static` 等额外依赖。
 
 ### 决策 4：空列表与错误路径保持原样
 

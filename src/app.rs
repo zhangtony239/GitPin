@@ -381,14 +381,15 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        list, pin, prune, resolve_unpin_target, unpin, PinOutcome, UnpinOutcome, UnpinTarget,
+        list, pin, prune, resolve_unpin_target, unpin, write_list, LauncherRecord, PinOutcome,
+        UnpinOutcome, UnpinTarget,
     };
     use crate::error::AppError;
     use crate::launcher::{
         CreateOutcome, LauncherBackend, LauncherEnumerationError, LauncherEnumerationItem,
         LauncherInspection, LauncherRoot, ManagedLauncher,
     };
-    use crate::repo::{Platform, Repository};
+    use crate::repo::{InvalidRootReason, Platform, Repository, RootStatus};
     use std::cell::{Cell, RefCell};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -847,5 +848,99 @@ mod tests {
             .iter()
             .any(|error| error.contains("broken-candidate")));
         assert!(report.errors.iter().any(|error| error.contains("failed")));
+    }
+
+    fn record(name: &str, root: &str, status: RootStatus) -> LauncherRecord {
+        LauncherRecord {
+            launcher: ManagedLauncher {
+                name: name.to_owned(),
+                root: PathBuf::from(root),
+                ide_executable: PathBuf::from("fake-code"),
+                path: PathBuf::from("/launchers").join(name),
+            },
+            status,
+        }
+    }
+
+    fn render(records: &[LauncherRecord]) -> String {
+        let mut buffer = Vec::new();
+        write_list(&mut buffer, records).expect("rendering must succeed");
+        String::from_utf8(buffer).expect("rendered output must be UTF-8")
+    }
+
+    fn column_start(line: &str, cell: &str) -> usize {
+        line.find(cell)
+            .unwrap_or_else(|| panic!("line '{line}' must contain '{cell}'"))
+    }
+
+    #[test]
+    fn list_columns_start_at_the_same_position_for_mixed_name_lengths() {
+        let records = [
+            record("abc", "/work/abc", RootStatus::Valid),
+            record(
+                "a-very-long-repository-name",
+                "/work/a-very-long-repository-name",
+                RootStatus::Valid,
+            ),
+        ];
+
+        let output = render(&records);
+        let lines = output.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            column_start(lines[0], "/work/abc"),
+            column_start(lines[1], "/work/a-very-long-repository-name"),
+            "root column must start at the same position regardless of name length"
+        );
+        assert!(
+            lines[0].starts_with("abc "),
+            "short names must be padded to the widest name"
+        );
+    }
+
+    #[test]
+    fn list_columns_align_by_display_width_for_non_ascii_names() {
+        let records = [
+            record("项目", "/r/one", RootStatus::Valid),
+            record("abcd", "/r/two", RootStatus::Valid),
+        ];
+
+        let output = render(&records);
+        let lines = output.lines().collect::<Vec<_>>();
+        let wide_prefix = &lines[0][..column_start(lines[0], "/r/one")];
+        let narrow_prefix = &lines[1][..column_start(lines[1], "/r/two")];
+
+        assert_eq!(
+            wide_prefix, "项目  ",
+            "a 4-column-wide CJK name must be padded like a 4-character ASCII name"
+        );
+        assert_eq!(narrow_prefix, "abcd  ");
+        assert_ne!(
+            wide_prefix.len(),
+            narrow_prefix.len(),
+            "the two prefixes differ in bytes but not in display width"
+        );
+    }
+
+    #[test]
+    fn list_aligns_valid_and_invalid_rows_and_keeps_the_reason_in_the_status_column() {
+        let records = [
+            record("alpha", "/work/alpha", RootStatus::Valid),
+            record(
+                "beta",
+                "/work/beta",
+                RootStatus::Invalid(InvalidRootReason::Missing),
+            ),
+        ];
+
+        let output = render(&records);
+        let lines = output.lines().collect::<Vec<_>>();
+        assert_eq!(
+            column_start(lines[0], "/work/alpha"),
+            column_start(lines[1], "/work/beta"),
+            "valid and invalid rows must share the same root column"
+        );
+        assert!(lines[0].ends_with("valid"));
+        assert!(lines[1].ends_with("invalid: repository root does not exist"));
     }
 }
