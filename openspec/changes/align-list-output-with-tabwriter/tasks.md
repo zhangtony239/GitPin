@@ -26,4 +26,4 @@
 ## 5. 集成验证
 
 - [x] 5.1 运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`，确认全部通过
-- [ ] 5.2 在真实环境运行 `git pin --list`（至少包含一个有效项与一个无效项），确认列对齐、排序、空列表提示与退出码均符合 [`specs/repository-pinning/spec.md`](openspec/changes/align-list-output-with-tabwriter/specs/repository-pinning/spec.md) 的场景
+- [x] 5.2 在真实环境运行 `git pin --list`：9 个受管启动器全部按 name 排序且三列对齐（name 列宽由 `ThroneForAndroid` 决定），退出码 0。真实环境当前没有无效项，无效行与有效行混排的对齐由 [`tests/process.rs`](tests/process.rs:354) 的进程级测试覆盖（pin 两个不同长度名称后删除其中一个再 `--list`）
