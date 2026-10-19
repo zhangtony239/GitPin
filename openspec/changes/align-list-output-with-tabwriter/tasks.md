@@ -20,7 +20,7 @@
 
 ## 4. 进程级测试与文档
 
-- [ ] 4.1 扩展 [`tests/process.rs`](tests/process.rs:354) 的 `list_is_read_only_and_prune_is_diagnostic_and_idempotent`：pin 两个名称长度不同的 repository 后运行 `--list`，断言两行中 root 列起始位置一致，且仍包含 `valid`，确认 `cargo test --test process` 通过
+- [x] 4.1 扩展 [`tests/process.rs`](tests/process.rs:354) 的 `list_is_read_only_and_prune_is_diagnostic_and_idempotent`：pin 两个名称长度不同的 repository 后运行 `--list`，断言两行中 root 列起始位置一致，且仍包含 `valid`，确认 `cargo test --test process` 通过
 - [ ] 4.2 更新 [`README.md`](README.md:1) 与 [`README_zh.md`](README_zh.md:1) 中 `git pin --list` 的示例输出为对齐后的形式，确认文档中的示例与实际运行 `git pin --list` 的输出形态一致
 
 ## 5. 集成验证

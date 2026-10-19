@@ -58,6 +58,15 @@ fn assert_failure_with(output: &Output, expected: &str) {
     );
 }
 
+/// Returns the byte offset where the root column starts on a list row.
+fn root_column(line: &str, name: &str) -> usize {
+    let after_name = name.len();
+    line[after_name..]
+        .find(|character: char| character != ' ')
+        .map(|offset| after_name + offset)
+        .expect("a list row must have a root column after the name")
+}
+
 fn git(directory: &Path, arguments: &[&str]) {
     let output = run(Command::new("git").arg("-C").arg(directory).args(arguments));
     assert_success(&output);
@@ -359,12 +368,35 @@ fn list_is_read_only_and_prune_is_diagnostic_and_idempotent() {
     let launcher = environment.launcher("stale-project");
     assert!(launcher.exists());
 
+    let long_repository = environment
+        .root
+        .0
+        .join("repositories/a-much-longer-project-name");
+    initialize_repository(&long_repository);
+    assert_success(&run(environment.command(git_pin()).arg(&long_repository)));
+
     let output = run(environment.command(git_pin()).arg("--list"));
     assert_success(&output);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("stale-project"));
     assert!(stdout.contains("valid"));
     assert!(launcher.exists(), "list must not modify a launcher");
+
+    let lines = stdout.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 2, "both pinned repositories must be listed");
+    let short_line = lines
+        .iter()
+        .find(|line| line.starts_with("stale-project"))
+        .expect("the short name must start its own row");
+    let long_line = lines
+        .iter()
+        .find(|line| line.starts_with("a-much-longer-project-name"))
+        .expect("the long name must start its own row");
+    assert_eq!(
+        root_column(short_line, "stale-project"),
+        root_column(long_line, "a-much-longer-project-name"),
+        "the root column must start at the same position for every row"
+    );
 
     fs::remove_dir_all(&repository).expect("repository fixture must be deleted");
     let output = run(environment.command(git_pin()).arg("--list"));
