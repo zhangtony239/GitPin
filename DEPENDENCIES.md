@@ -4,12 +4,15 @@ This inventory records every direct and transitive third-party package in the
 committed `Cargo.lock` used for Git Pin V1. The project itself remains licensed
 under the MIT License in `LICENSE`.
 
-The only direct dependency is the target-scoped `windows` crate. All remaining
-entries are its transitive dependencies. No development-only dependency, Git
-dependency, alternate registry, or wildcard version is present.
+The direct dependencies are the target-scoped `windows` crate and the
+cross-platform `tabwriter` crate. All remaining entries are their transitive
+dependencies. No development-only dependency, Git dependency, alternate
+registry, or wildcard version is present.
 
 | Package | Version | Relationship | Upstream SPDX license |
 | --- | --- | --- | --- |
+| `tabwriter` | 1.4.1 | direct, all targets | Unlicense OR MIT |
+| `unicode-width` | 0.2.2 | transitive | MIT OR Apache-2.0 |
 | `windows` | 0.58.0 | direct, Windows target only | MIT OR Apache-2.0 |
 | `windows-core` | 0.58.0 | transitive | MIT OR Apache-2.0 |
 | `windows-implement` | 0.58.0 | transitive | MIT OR Apache-2.0 |

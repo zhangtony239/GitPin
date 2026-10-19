@@ -1,7 +1,10 @@
 //! Application orchestration shared by both command-line entry points.
 
 use std::ffi::OsStr;
+use std::io::{self, Write};
 use std::path::Path;
+
+use tabwriter::TabWriter;
 
 use crate::cli::{Invocation, PIN_HELP};
 use crate::config::{read_ide, resolve_ide_selection};
@@ -272,6 +275,32 @@ pub fn unpin<B: LauncherBackend>(
     }
 }
 
+/// Renders the list table with columns sized to the content of this run.
+fn write_list<W: Write>(writer: W, records: &[LauncherRecord]) -> Result<(), AppError> {
+    let mut table = TabWriter::new(writer);
+    for record in records {
+        match &record.status {
+            RootStatus::Valid => writeln!(
+                table,
+                "{}\t{}\tvalid",
+                record.launcher.name,
+                record.launcher.root.display()
+            ),
+            RootStatus::Invalid(reason) => writeln!(
+                table,
+                "{}\t{}\tinvalid: {}",
+                record.launcher.name,
+                record.launcher.root.display(),
+                reason
+            ),
+        }
+        .map_err(|error| AppError::failure(format!("could not write list output: {error}")))?;
+    }
+    table
+        .flush()
+        .map_err(|error| AppError::failure(format!("could not write list output: {error}")))
+}
+
 /// Runs one of the public commands.
 pub fn run(invocation: Invocation) -> Result<(), AppError> {
     if invocation == Invocation::Help {
@@ -326,21 +355,7 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             if report.records.is_empty() {
                 println!("no pinned repositories");
             } else {
-                for record in report.records {
-                    match record.status {
-                        RootStatus::Valid => println!(
-                            "{}\t{}\tvalid",
-                            record.launcher.name,
-                            record.launcher.root.display()
-                        ),
-                        RootStatus::Invalid(reason) => println!(
-                            "{}\t{}\tinvalid: {}",
-                            record.launcher.name,
-                            record.launcher.root.display(),
-                            reason
-                        ),
-                    }
-                }
+                write_list(io::stdout(), &report.records)?;
             }
             batch_error("list", report.errors)
         }

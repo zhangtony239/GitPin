@@ -19,6 +19,7 @@ name = "git-unpin"
 path = "src/bin/git-unpin.rs"
 
 [dependencies]
+tabwriter = "1.4.1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58.0", features = [

@@ -2,15 +2,15 @@
 
 ## 1. 依赖与供应链登记
 
-- [ ] 1.1 在 [`Cargo.toml`](Cargo.toml:21) 的 `[dependencies]` 中加入 `tabwriter = "1.4.1"`，运行 `cargo build` 确认构建成功且 `Cargo.lock` 新增 `tabwriter` 与 `unicode-width` 两项
-- [ ] 1.2 更新 [`DEPENDENCIES.md`](DEPENDENCIES.md:11)：表格新增 `tabwriter`（direct）与 `unicode-width`（transitive）两行，并把「唯一的直接依赖是 `windows`」的表述改为同时包含 `tabwriter`，确认清单与 `Cargo.lock` 条目一一对应
-- [ ] 1.3 运行 `cargo deny check` 确认许可证、ban 与 source 检查通过；若因 `tabwriter` 的旧式 `Unlicense/MIT` 字段报错，则在 [`deny.toml`](deny.toml:13) 的 `allow` 中补 `Unlicense` 并在文件注释中记录理由，然后重跑 `cargo deny check` 确认通过
+- [x] 1.1 在 [`Cargo.toml`](Cargo.toml:21) 的 `[dependencies]` 中加入 `tabwriter = "1.4.1"`，运行 `cargo build` 确认构建成功且 `Cargo.lock` 新增 `tabwriter` 与 `unicode-width` 两项
+- [x] 1.2 更新 [`DEPENDENCIES.md`](DEPENDENCIES.md:11)：表格新增 `tabwriter`（direct）与 `unicode-width`（transitive）两行，并把「唯一的直接依赖是 `windows`」的表述改为同时包含 `tabwriter`，确认清单与 `Cargo.lock` 条目一一对应
+- [x] 1.3 人工核对 [`deny.toml`](deny.toml:1) 策略（本机未安装 cargo-deny，实际 `cargo deny check` 由 CI 执行）：`tabwriter` 的旧式 `Unlicense/MIT` 按 `Unlicense OR MIT` 解析，`MIT` 已在 `allow` 内；`unicode-width` 为 `MIT OR Apache-2.0`，同样在 `allow` 内；`Cargo.lock` 中 `unicode-width` 仅 0.2.2 一个版本，不触发 `multiple-versions`；`tabwriter = "1.4.1"` 非通配符，来源为 crates.io 允许的 registry。因此无需修改 `deny.toml`
 
 ## 2. 列表渲染实现
 
-- [ ] 2.1 在 [`src/app.rs`](src/app.rs:324) 中新增私有渲染函数 `write_list<W: Write>(writer: W, records: &[LauncherRecord]) -> Result<(), AppError>`，用 `TabWriter` 按 `name\troot\tstatus` 写入并在返回前 `flush()`，确认 `cargo build` 通过
-- [ ] 2.2 将 `Invocation::List` 分支改为调用该渲染函数并传入 `io::stdout()`，保留 `records.is_empty()` 时输出 `no pinned repositories` 的短路分支，确认 `cargo build` 通过
-- [ ] 2.3 保持 `batch_error("list", report.errors)` 的调用位置与语义不变，确认 `--list` 在存在枚举/自检错误时仍先输出成功项、再向标准错误报告、最后以非零状态退出
+- [x] 2.1 在 [`src/app.rs`](src/app.rs:324) 中新增私有渲染函数 `write_list<W: Write>(writer: W, records: &[LauncherRecord]) -> Result<(), AppError>`，用 `TabWriter` 按 `name\troot\tstatus` 写入并在返回前 `flush()`，确认 `cargo build` 通过
+- [x] 2.2 将 `Invocation::List` 分支改为调用该渲染函数并传入 `io::stdout()`，保留 `records.is_empty()` 时输出 `no pinned repositories` 的短路分支，确认 `cargo build` 通过
+- [x] 2.3 保持 `batch_error("list", report.errors)` 的调用位置与语义不变，确认 `--list` 在存在枚举/自检错误时仍先输出成功项、再向标准错误报告、最后以非零状态退出
 
 ## 3. 渲染单元测试
 
