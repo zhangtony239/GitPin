@@ -7,7 +7,8 @@ use std::path::Path;
 use tabwriter::TabWriter;
 
 use crate::cli::{Invocation, PIN_HELP};
-use crate::config::{read_ide, resolve_ide_selection};
+use crate::VERSION;
+use crate::config::{read_ide, resolve_ide};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
@@ -308,6 +309,11 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
         return Ok(());
     }
 
+    if invocation == Invocation::Version {
+        println!("git-pin {VERSION}");
+        return Ok(());
+    }
+
     let platform = Platform::current();
     let backend = NativeBackend::new()?;
 
@@ -374,7 +380,9 @@ pub fn run(invocation: Invocation) -> Result<(), AppError> {
             }
             batch_error("prune", report.errors)
         }
-        Invocation::Help => unreachable!("help returns before environment access"),
+        Invocation::Help | Invocation::Version => {
+            unreachable!("help and version return before environment access")
+        }
     }
 }
 

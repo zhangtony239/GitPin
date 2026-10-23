@@ -2,15 +2,15 @@
 
 ## 1. 版本常量与解析层
 
-- [ ] 1.1 在 [`src/lib.rs`](src/lib.rs:1) 或 [`src/app.rs`](src/app.rs:1) 中新增公开版本常量，取值为 `env!("CARGO_PKG_VERSION")`，并验证 `cargo build` 通过且常量值与 [`Cargo.toml`](Cargo.toml:3) 的 `version` 一致
-- [ ] 1.2 在 [`src/cli.rs`](src/cli.rs:26) 的 `Invocation` 中新增 `Version` 变体，并在 `Operation::Pin` 分支把 `--version` 与 `-v` 映射到该变体，验证 `cargo test --lib cli` 中新增的解析用例通过
-- [ ] 1.3 更新 [`src/cli.rs`](src/cli.rs:16) 的 `Operation::Pin::usage()` 与 [`PIN_HELP`](src/cli.rs:35)，加入 `--version`/`-v` 说明，验证 `git pin -h` 输出包含版本入口且退出码为 0
-- [ ] 1.4 扩展 [`src/cli.rs`](src/cli.rs:71) 的单元测试矩阵：`--version`、`-v` 归入有效调用，`--version --list`、`-v path`、`--version -h` 归入用法错误，验证 `cargo test --lib cli` 全部通过
+- [x] 1.1 在 [`src/lib.rs`](src/lib.rs:1) 或 [`src/app.rs`](src/app.rs:1) 中新增公开版本常量，取值为 `env!("CARGO_PKG_VERSION")`，并验证 `cargo build` 通过且常量值与 [`Cargo.toml`](Cargo.toml:3) 的 `version` 一致
+- [x] 1.2 在 [`src/cli.rs`](src/cli.rs:26) 的 `Invocation` 中新增 `Version` 变体，并在 `Operation::Pin` 分支把 `--version` 与 `-v` 映射到该变体，验证 `cargo test --lib cli` 中新增的解析用例通过
+- [x] 1.3 更新 [`src/cli.rs`](src/cli.rs:16) 的 `Operation::Pin::usage()` 与 [`PIN_HELP`](src/cli.rs:35)，加入 `--version`/`-v` 说明，验证 `git pin -h` 输出包含版本入口且退出码为 0
+- [x] 1.4 扩展 [`src/cli.rs`](src/cli.rs:71) 的单元测试矩阵：`--version`、`-v` 归入有效调用，`--version --list`、`-v path`、`--version -h` 归入用法错误，验证 `cargo test --lib cli` 全部通过
 
 ## 2. 执行层与无副作用短路
 
-- [ ] 2.1 在 [`src/app.rs`](src/app.rs:276) 的 `run()` 中于 `Invocation::Help` 之后、`Platform::current()` 之前处理 `Invocation::Version`，打印 `git-pin <version>` 并返回 `Ok(())`，验证 `cargo build` 通过且 `run()` 的 `match` 保持穷尽
-- [ ] 2.2 在非 Git repository 的临时目录中运行 `git-pin --version`，验证 stdout 为单行 `git-pin <version>`、stderr 为空、退出码为 0，且未创建任何启动器文件
+- [x] 2.1 在 [`src/app.rs`](src/app.rs:276) 的 `run()` 中于 `Invocation::Help` 之后、`Platform::current()` 之前处理 `Invocation::Version`，打印 `git-pin <version>` 并返回 `Ok(())`，验证 `cargo build` 通过且 `run()` 的 `match` 保持穷尽
+- [x] 2.2 在非 Git repository 的临时目录中运行 `git-pin --version`，验证 stdout 为单行 `git-pin <version>`、stderr 为空、退出码为 0，且未创建任何启动器文件
 
 ## 3. 跨进程测试
 

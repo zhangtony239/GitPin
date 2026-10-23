@@ -15,7 +15,7 @@ impl Operation {
     /// The executable name and usage accepted by this operation.
     pub const fn usage(self) -> &'static str {
         match self {
-            Self::Pin => "usage: git pin [path] | --help | --list | --prune",
+            Self::Pin => "usage: git pin [path] | --help | --list | --prune | --version",
             Self::Unpin => "usage: git unpin [path|name]",
         }
     }
@@ -28,11 +28,12 @@ pub enum Invocation {
     Help,
     List,
     Prune,
+    Version,
     Unpin(Option<OsString>),
 }
 
 /// Complete help for the `git pin` external command.
-pub const PIN_HELP: &str = "Git Pin creates and maintains native repository launchers.\n\nUSAGE:\n    git pin [path]\n    git pin --list\n    git pin --prune\n    git pin -h\n\nMODES:\n    [path]    Pin the repository containing path (default: current directory)\n    --list    List every Git Pin managed repository launcher and its status\n    --prune   Remove managed launchers whose repository root is no longer valid\n    -h        Print this help without changing any launcher\n\nIDE CONFIGURATION:\n    pin.ide selects an IDE executable name from PATH or an executable path.\n    The default is `code`. The configured CLI must support `ide path/to/repo`.\n    The value is one executable, not a shell command or argument template.\n    Git's command-line, repository, global, and system configuration precedence applies.\n    The resolved executable is frozen into each new launcher. To change an existing\n    launcher, run `git unpin [path|name]` and then pin it again.\n\nHELP NOTE:\n    Git handles `git pin --help` as a documentation lookup before invoking git-pin.\n    Use `git pin -h` or `git-pin --help` for this complete help.\n";
+pub const PIN_HELP: &str = "Git Pin creates and maintains native repository launchers.\n\nUSAGE:\n    git pin [path]\n    git pin --list\n    git pin --prune\n    git pin --version\n    git pin -h\n\nMODES:\n    [path]     Pin the repository containing path (default: current directory)\n    --list     List every Git Pin managed repository launcher and its status\n    --prune    Remove managed launchers whose repository root is no longer valid\n    --version  Print the Git Pin version without changing any launcher\n    -v         Alias for --version\n    -h         Print this help without changing any launcher\n\nIDE CONFIGURATION:\n    pin.ide selects an IDE executable name from PATH or an executable path.\n    The default is `code`. The configured CLI must support `ide path/to/repo`.\n    The value is one executable, not a shell command or argument template.\n    Git's command-line, repository, global, and system configuration precedence applies.\n    The resolved executable is frozen into each new launcher. To change an existing\n    launcher, run `git unpin [path|name]` and then pin it again.\n\nHELP NOTE:\n    Git handles `git pin --help` as a documentation lookup before invoking git-pin.\n    Use `git pin -h` or `git-pin --help` for this complete help.\n";
 
 /// Parses zero or one positional argument without interpreting paths as text.
 pub fn parse<I>(operation: Operation, arguments: I) -> Result<Invocation, AppError>
@@ -54,6 +55,9 @@ where
             }
             Some(value) if value == OsStr::new("--list") => Ok(Invocation::List),
             Some(value) if value == OsStr::new("--prune") => Ok(Invocation::Prune),
+            Some(value) if value == OsStr::new("--version") || value == OsStr::new("-v") => {
+                Ok(Invocation::Version)
+            }
             Some(value) if is_option(value) => Err(AppError::usage(operation.usage())),
             Some(_) => Ok(Invocation::Pin(argument)),
         },
@@ -93,6 +97,8 @@ mod tests {
             ("-h", Invocation::Help),
             ("--list", Invocation::List),
             ("--prune", Invocation::Prune),
+            ("--version", Invocation::Version),
+            ("-v", Invocation::Version),
         ] {
             assert_eq!(parse(Operation::Pin, args(&[argument])).unwrap(), expected);
         }
@@ -119,6 +125,9 @@ mod tests {
             args(&["repository", "--prune"]),
             args(&["--help", "--list"]),
             args(&["-h", "--prune"]),
+            args(&["--version", "--list"]),
+            args(&["-v", "repository"]),
+            args(&["--version", "-h"]),
         ] {
             let error = parse(Operation::Pin, invalid).expect_err("pin arguments must be rejected");
             assert_eq!(error.exit_code(), ExitCode::Usage);
