@@ -7,7 +7,7 @@ use std::path::Path;
 use tabwriter::TabWriter;
 
 use crate::cli::{Invocation, PIN_HELP};
-use crate::config::{read_ide, resolve_ide};
+use crate::config::{read_ide, resolve_ide_selection};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
