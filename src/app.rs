@@ -7,12 +7,12 @@ use std::path::Path;
 use tabwriter::TabWriter;
 
 use crate::cli::{Invocation, PIN_HELP};
-use crate::VERSION;
 use crate::config::{read_ide, resolve_ide};
 use crate::error::AppError;
 use crate::launcher::{CreateOutcome, LauncherBackend, LauncherInspection, ManagedLauncher};
 use crate::platform::NativeBackend;
 use crate::repo::{check_root, launcher_name, paths_equivalent, Platform, Repository, RootStatus};
+use crate::VERSION;
 
 /// Successful states returned by pin orchestration.
 #[derive(Clone, Debug, Eq, PartialEq)]

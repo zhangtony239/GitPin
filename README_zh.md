@@ -26,7 +26,7 @@ arm64 包不属于 V1 支持矩阵，因为其完整原生构建、测试、打�
 1. 从 GitHub Release 下载与操作系统匹配的 x86_64 ZIP。
 2. 解压 ZIP。其顶层目录包含 `git-pin`、`git-unpin`、`README.md` 和 `LICENSE`；Windows 上两个 binary 均带 `.exe` 后缀。
 3. 将解压后的顶层目录加入用户 `PATH`。
-4. 运行 `git pin -h` 或 `git-pin --help`，确认命令可用。
+4. 运行 `git pin -h` 或 `git-pin --help` 确认命令可用，并用 `git pin --version` 确认已安装版本。
 
 Git 会在分派外部 `git-pin` executable 之前，将 `git pin --help` 占用为自身的文档查询。请使用 `git pin -h` 或直接运行 `git-pin --help` 查看 Git Pin 完整帮助。
 
@@ -109,6 +109,15 @@ git pin --prune
 
 `--prune` 会在删除前复检，并且只删除能够识别为 Git Pin 管理、且记录 root 已不存在、不是目录、不再是 Git 工作树或不再匹配 Git 顶层目录的启动器。有效启动器以及无法识别的外部文件或应用都会保留。已固化的 IDE executable 后来被移动或删除，既不会使 repository root 失效，也不会触发清理。没有僵尸项时重复运行 prune 仍会成功。若某一项无法读取、自检或删除，命令会继续处理其他项，最终通过非零状态和汇总诊断报告失败。
 
+查看已安装版本：
+
+```text
+git pin --version
+git pin -v
+```
+
+`--version` 与 `-v` 等价。它们向标准输出打印一行 `git-pin <version>` 并以成功状态退出。输出的值就是构建该 executable 时使用的包版本，因此始终与发布版本一致。版本查询是只读操作：不读取 Git 配置、不解析 repository、也不访问启动器目录，因此在非仓库目录中、或启动器目录不可写时同样可用。与 `git pin --help` 不同，Git 不会拦截 `git pin --version`。
+
 Git Pin 以 Git 认定的顶层工作树为准。启动器显示名称取自根目录 basename，且不会被静默改写。对同一个 root 重复运行 `git pin` 会成功，并保留既有启动器及其固化 IDE。如果另一个 root 具有相同 basename，Git Pin 会报告现有目标并拒绝覆盖。移除不存在的入口也会成功。
 
 ## 启动器位置
@@ -121,7 +130,7 @@ Git Pin 以 Git 认定的顶层工作树为准。启动器显示名称取自根�
 
 ## V1.2 范围
 
-`git pin` 接受零个或一个位置参数，或单独接受 `--help`、`-h`、`--list`、`--prune` 之一；`git unpin` 接受零个或一个位置参数。V1.2 不提供额外 IDE 参数、shell 模板、`--name`、`--all`、JSON/过滤输出、独立 metadata database、自动安装、自动更新、强制刷新启动器或自动修改 `PATH`。它也不保证每个第三方桌面启动器缓存都会立即刷新。
+`git pin` 接受零个或一个位置参数，或单独接受 `--help`、`-h`、`--list`、`--prune`、`--version`、`-v` 之一；`git unpin` 接受零个或一个位置参数。V1.2 不提供额外 IDE 参数、shell 模板、`--name`、`--all`、JSON/过滤输出、独立 metadata database、自动安装、自动更新、强制刷新启动器或自动修改 `PATH`。它也不保证每个第三方桌面启动器缓存都会立即刷新。
 
 ## 开发
 

@@ -38,7 +38,8 @@ release gate on every advertised platform.
 2. Extract the ZIP. Its top-level directory contains `git-pin`, `git-unpin`,
    `README.md`, and `LICENSE` (`.exe` is present on both Windows binaries).
 3. Add that extracted top-level directory to the user `PATH`.
-4. Run `git pin -h` or `git-pin --help` to confirm the command is available.
+4. Run `git pin -h` or `git-pin --help` to confirm the command is available, and
+   `git pin --version` to confirm the installed version.
 
 Git reserves `git pin --help` for its own documentation lookup before it
 dispatches the external `git-pin` executable. Use `git pin -h` or direct
@@ -150,6 +151,21 @@ remain succeeds. If one entry cannot be read, checked, or removed, processing
 continues for the other entries and the command ultimately returns a non-zero
 status with all available diagnostics.
 
+Print the installed version:
+
+```text
+git pin --version
+git pin -v
+```
+
+`--version` and `-v` are equivalent. They print one line, `git-pin <version>`, to
+standard output and exit successfully. The reported value is the package version
+the executable was built from, so it always matches the release. Version output
+is read-only: it does not read Git configuration, resolve a repository, or touch
+launcher directories, so it also works outside a repository and when launcher
+directories are not writable. Unlike `git pin --help`, Git does not intercept
+`git pin --version`.
+
 Git determines the top-level working tree. The launcher's display name is the
 root directory basename and is not silently rewritten. Repeating `git pin` for
 the same root is successful and preserves the existing launcher and frozen IDE.
@@ -169,8 +185,8 @@ artifacts. Launchers created by v1.0/v1.1 remain inspectable and removable.
 ## V1.2 scope
 
 `git pin` accepts zero or one positional argument, or exactly one of `--help`,
-`-h`, `--list`, and `--prune`. `git unpin` accepts zero or one positional
-argument. V1.2 does not provide extra IDE arguments, shell templates, `--name`,
+`-h`, `--list`, `--prune`, `--version`, and `-v`. `git unpin` accepts zero or one
+positional argument. V1.2 does not provide extra IDE arguments, shell templates, `--name`,
 `--all`, JSON/filter output, a separate metadata database, automatic
 installation, automatic updates, forced launcher refresh, or automatic `PATH`
 modification. It does not guarantee immediate refresh of every third-party

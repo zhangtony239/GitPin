@@ -20,10 +20,10 @@
 
 ## 4. 文档
 
-- [ ] 4.1 更新 [`README.md`](README.md) 的用法段落，加入 `git pin --version` / `git pin -v` 说明，验证文档中的命令与实际输出一致
-- [ ] 4.2 更新 [`README_zh.md`](README_zh.md) 的用法段落，与英文版保持一致，验证文档中的命令与实际输出一致
+- [x] 4.1 更新 [`README.md`](README.md) 的用法段落，加入 `git pin --version` / `git pin -v` 说明，验证文档中的命令与实际输出一致
+- [x] 4.2 更新 [`README_zh.md`](README_zh.md) 的用法段落，与英文版保持一致，验证文档中的命令与实际输出一致
 
 ## 5. 集成验证
 
-- [ ] 5.1 运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`，验证全部通过
+- [x] 5.1 运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`，验证全部通过
 - [ ] 5.2 运行 `openspec validate add-version-flag --strict`，验证变更通过校验
