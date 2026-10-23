@@ -254,6 +254,7 @@ fn help_is_successful_complete_and_has_no_launcher_side_effects() {
             "git pin [path]",
             "git pin --list",
             "git pin --prune",
+            "git pin --version",
             "pin.ide",
             "default is `code`",
             "ide path/to/repo",
@@ -276,6 +277,58 @@ fn help_is_successful_complete_and_has_no_launcher_side_effects() {
     assert_success(&git_dispatched);
     assert!(git_dispatched.stderr.is_empty());
     assert_eq!(git_dispatched.stdout, expected_stdout.unwrap());
+    environment.assert_no_launcher_residue();
+}
+
+#[test]
+fn version_is_successful_identical_for_both_flags_and_has_no_side_effects() {
+    let environment = ProcessEnvironment::new("version");
+    let expected = format!("git-pin {}\n", env!("CARGO_PKG_VERSION"));
+    let mut expected_stdout = None;
+    for argument in ["--version", "-v"] {
+        let output = run(environment.command(git_pin()).arg(argument));
+        assert_success(&output);
+        assert!(output.stderr.is_empty());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected.as_str());
+        if let Some(previous) = &expected_stdout {
+            assert_eq!(&output.stdout, previous);
+        } else {
+            expected_stdout = Some(output.stdout);
+        }
+    }
+    environment.assert_no_launcher_residue();
+}
+
+#[test]
+fn git_dispatch_exposes_the_version_without_interception() {
+    let environment = ProcessEnvironment::new("version-dispatch");
+    let expected = format!("git-pin {}\n", env!("CARGO_PKG_VERSION"));
+    for argument in ["--version", "-v"] {
+        let output = run(environment.command("git").args(["pin", argument]));
+        assert_success(&output);
+        assert!(output.stderr.is_empty());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected.as_str());
+    }
+    environment.assert_no_launcher_residue();
+}
+
+#[test]
+fn version_option_rejects_combination_with_other_modes() {
+    let environment = ProcessEnvironment::new("version-conflict");
+    for arguments in [
+        vec!["--version", "--list"],
+        vec!["-v", "repository"],
+        vec!["--version", "-h"],
+    ] {
+        let output = run(environment.command(git_pin()).args(&arguments));
+        assert_eq!(output.status.code(), Some(2));
+        assert_failure_with(&output, "usage: git pin [path]");
+        assert!(
+            output.stdout.is_empty(),
+            "rejected version invocation must not print a version: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
     environment.assert_no_launcher_residue();
 }
 

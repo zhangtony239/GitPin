@@ -14,9 +14,9 @@
 
 ## 3. 跨进程测试
 
-- [ ] 3.1 在 [`tests/process.rs`](tests/process.rs:39) 中新增测试，断言 `git-pin --version` 与 `git-pin -v` 的 stdout 等于 `format!("git-pin {}\n", env!("CARGO_PKG_VERSION"))`、stderr 为空、退出码为 0，验证 `cargo test --test process` 通过
-- [ ] 3.2 在 [`tests/process.rs`](tests/process.rs:39) 中新增测试，经真实 `git pin --version` 与 `git pin -v` 分派验证输出与退出码，确认 Git 前端不会拦截版本选项
-- [ ] 3.3 在 [`tests/process.rs`](tests/process.rs:39) 中新增测试，断言 `git pin --version --list`、`git pin -v path/to/repo`、`git pin --version -h` 以非零状态退出、stderr 含用法信息、stdout 不含版本号，验证 `cargo test --test process` 通过
+- [x] 3.1 在 [`tests/process.rs`](tests/process.rs:39) 中新增测试，断言 `git-pin --version` 与 `git-pin -v` 的 stdout 等于 `format!("git-pin {}\n", env!("CARGO_PKG_VERSION"))`、stderr 为空、退出码为 0，验证 `cargo test --test process` 通过
+- [x] 3.2 在 [`tests/process.rs`](tests/process.rs:39) 中新增测试，经真实 `git pin --version` 与 `git pin -v` 分派验证输出与退出码，确认 Git 前端不会拦截版本选项
+- [x] 3.3 在 [`tests/process.rs`](tests/process.rs:39) 中新增测试，断言 `git pin --version --list`、`git pin -v path/to/repo`、`git pin --version -h` 以非零状态退出、stderr 含用法信息、stdout 不含版本号，验证 `cargo test --test process` 通过
 
 ## 4. 文档
 
