@@ -26,4 +26,4 @@
 ## 5. 集成验证
 
 - [x] 5.1 运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`，验证全部通过
-- [ ] 5.2 运行 `openspec validate add-version-flag --strict`，验证变更通过校验
+- [x] 5.2 运行 `openspec validate add-version-flag --strict`，验证变更通过校验
