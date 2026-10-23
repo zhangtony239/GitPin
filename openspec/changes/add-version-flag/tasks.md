@@ -27,3 +27,4 @@
 
 - [x] 5.1 运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`，验证全部通过
 - [x] 5.2 运行 `openspec validate add-version-flag --strict`，验证变更通过校验
+- [x] 5.3 将 [`Cargo.toml`](Cargo.toml:3) 的 `version` 提升到 `1.2.3`，验证 `cargo build` 更新 `Cargo.lock` 且 `git-pin --version` 输出 `git-pin 1.2.3`

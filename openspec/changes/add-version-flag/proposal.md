@@ -10,6 +10,7 @@
 - `--version`/`-v` 与位置参数、`--list`、`--prune`、`-h`/`--help` 互斥；组合使用按既有用法错误处理，输出用法信息并以非零状态退出。
 - `git pin -h` 与 `git-pin --help` 的帮助文本新增版本查询入口说明。
 - 同步更新中英文 README 的命令用法说明。
+- 包版本从 `1.2.0` 提升到 `1.2.3`，使版本查询输出反映本次发布。
 - 范围假设：本次只覆盖 `git pin`；`git unpin` 不新增版本选项，保持现有参数矩阵不变。
 
 ## Capabilities
@@ -29,4 +30,5 @@
 - [`src/bin/git-pin.rs`](src/bin/git-pin.rs)：无需改动，沿用现有 `parse` + `app::run` 流程。
 - [`tests/process.rs`](tests/process.rs)：新增跨进程测试，验证 `git pin --version`、`git pin -v` 的输出与退出状态，以及组合参数的拒绝行为。
 - 文档：[`README.md`](README.md) 与 [`README_zh.md`](README_zh.md) 的用法段落。
+- [`Cargo.toml`](Cargo.toml:3)：`version` 从 `1.2.0` 提升到 `1.2.3`，`Cargo.lock` 随之更新。
 - 不新增依赖、不新增配置文件、不改变 launcher 存储布局或平台后端接口。

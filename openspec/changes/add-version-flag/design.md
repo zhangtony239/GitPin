@@ -9,7 +9,7 @@
 - [`src/cli.rs`](src/cli.rs:38) 的 `parse()` 只接受零个或一个参数，先检查参数个数，再按 `Operation` 分派到固定选项字面量；`Invocation` 是封闭枚举，`app::run()` 对其做穷尽匹配。
 - [`src/app.rs`](src/app.rs:276) 的 `run()` 在 `Invocation::Help` 时于任何环境访问之前短路返回，这是唯一不触碰平台后端与 Git 配置的路径。
 - [`src/bin/git-pin.rs`](src/bin/git-pin.rs:13) 只做 `parse` + `app::run`，不含业务逻辑，因此版本查询不需要改动入口文件。
-- 包版本唯一来源是 [`Cargo.toml`](Cargo.toml:3) 的 `version` 字段，当前为 `1.2.0`。
+- 包版本唯一来源是 [`Cargo.toml`](Cargo.toml:3) 的 `version` 字段，本次发布提升到 `1.2.3`。
 - 现有跨进程测试 [`tests/process.rs`](tests/process.rs:39) 通过 `CARGO_BIN_EXE_git-pin` 启动真实二进制并断言 stdout/stderr 与退出状态。
 
 ## Goals / Non-Goals
@@ -41,9 +41,9 @@
 
 ### 输出格式：`git-pin <version>`
 
-单行输出 `git-pin 1.2.0` 到标准输出，末尾换行，退出码 0。前缀使用可执行文件名而非 `git pin`，使输出在直接调用 `git-pin --version` 与经 Git 分派两种情况下都准确，并符合常见 CLI 约定（`git --version`、`cargo --version` 均为 `<name> <version>`）。
+单行输出 `git-pin 1.2.3` 到标准输出，末尾换行，退出码 0。前缀使用可执行文件名而非 `git pin`，使输出在直接调用 `git-pin --version` 与经 Git 分派两种情况下都准确，并符合常见 CLI 约定（`git --version`、`cargo --version` 均为 `<name> <version>`）。
 
-替代方案：只输出裸版本号 `1.2.0`。虽然更易被脚本 `cut` 解析，但缺少程序标识，且与生态惯例不一致；脚本仍可用 `awk '{print $2}'` 提取。
+替代方案：只输出裸版本号 `1.2.3`。虽然更易被脚本 `cut` 解析，但缺少程序标识，且与生态惯例不一致；脚本仍可用 `awk '{print $2}'` 提取。
 
 ### 解析层：新增 `Invocation::Version` 变体
 
